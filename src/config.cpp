@@ -70,7 +70,7 @@ const char *modelName(Model model) { return model == Model::Creator5 ? "creator5
 uint16_t PrinterConfig::effectivePort() const {
     if (port) return port;
     switch (method) {
-    case Method::ZmodNfc: return ZMOD_NFC_PORT;
+    case Method::ZmodNfc:
     case Method::ZmodBasic: return MOONRAKER_PORT;
     default: return FLASHFORGE_PORT;
     }
@@ -104,7 +104,7 @@ void configToJson(const Config &config, JsonObject out, bool secrets) {
         o["port"] = p.port;
         o["serial"] = p.serial;
         secret(o, "check_code", p.checkCode, secrets);
-        secret(o, "token", p.token, secrets);
+        secret(o, "api_key", p.apiKey, secrets);
     }
 }
 
@@ -157,7 +157,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
             p.serial = o["serial"] | "";
             p.serial.trim();
             readSecret(o, "check_code", p.checkCode);
-            readSecret(o, "token", p.token);
+            readSecret(o, "api_key", p.apiKey);
             if (!p.host.length()) return "printer " + String(i + 1) + " has no IP address";
             if (!p.name.length()) p.name = p.host;
             if (p.method == Method::Stock && (!p.serial.length() || !p.checkCode.length()))

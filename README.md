@@ -16,7 +16,7 @@ printers and their IP addresses, and how each printer is reached.
            └──────┬──────────────┬──────────┬───┘
                   │              │          │
       Zmod + zmod_nfc      Zmod basic     Stock firmware
-      raw read ──► plugin  Moonraker      Flashforge local API
+      Moonraker ──► plugin Moonraker      Flashforge local API
       decode, Spoolman,    CHANGE_ZCOLOR  msConfig_cmd
       slot popup on the    + lane_data    (material + colour)
       printer, lane_data
@@ -38,7 +38,7 @@ Each printer on the reader's list uses one of three methods:
 
 | Method | Printer runs | What a scan does |
 |--------|--------------|------------------|
-| **Zmod + zmod_nfc** | Zmod with the [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc) plugin | The **whole tag read** goes to the plugin, which handles it exactly like a tag on a USB reader plugged into the printer: it decodes every format zmod_nfc knows, looks the spool up in **Spoolman** (spool ID on the tag, or the tag's UID), shows its **slot popup on the printer's screen** (or takes the slot you insert filament into), sets the slot through zmod_afclite's `SET_SPOOL_ID` or Zmod's `CHANGE_ZCOLOR`, and fills in Moonraker's **lane_data** for OrcaSlicer. The reader's web page can pick the slot too. |
+| **Zmod + zmod_nfc** | Zmod with the [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc) plugin | The **whole tag read** goes through Moonraker to the plugin (no extra port or service on the printer), which handles it exactly like a tag on a USB reader plugged into the printer: it decodes every format zmod_nfc knows, looks the spool up in **Spoolman** (spool ID on the tag, or the tag's UID), shows its **slot popup on the printer's screen** (or takes the slot you insert filament into), sets the slot through zmod_afclite's `SET_SPOOL_ID` or Zmod's `CHANGE_ZCOLOR`, and fills in Moonraker's **lane_data** for OrcaSlicer. The reader's web page can pick the slot too. |
 | **Zmod basic** | Zmod, no plugin | Material and colour go to the slot through Moonraker (`CHANGE_ZCOLOR`), snapped to Zmod's material list and colour palette, and the slot's **lane_data** entry gets the material, colour, vendor, temperatures and the tag's Spoolman spool ID if it carries one. No Spoolman lookup. |
 | **Stock firmware** | Flashforge firmware | Material and colour through the printer's local API (`msConfig_cmd` on port 8898) - that is all the stock API offers. Needs the printer's **serial number** and **check code**. On the Creator 5, the colour is snapped to its 24-colour palette and the material to its list, as its firmware shows nothing else. |
 
@@ -111,10 +111,13 @@ the file is `.pio/build/<board>/firmware.bin`).
    Settings tab) or its IP address from your router.
 4. Under **Printers**, add each printer: name, IP address, AD5X or
    Creator 5, and the method. **Test** checks the connection.
-   * **Zmod + zmod_nfc**: install or update zmod_nfc on the printer; it
-     listens for readers on port 7140. If you set `remote_token` in its
-     `[zmod_nfc]` section, enter the same token here.
+   * **Zmod + zmod_nfc**: install or update zmod_nfc on the printer. The
+     reader reaches it through Moonraker (port 7125); zmod_nfc adds
+     endpoints to Moonraker's API rather than opening a port of its own.
    * **Zmod basic**: nothing to install; uses Moonraker on port 7125.
+   * Both Zmod methods work when the reader's address is in Moonraker's
+     `[authorization] trusted_clients`, which Zmod sets to every address by
+     default. If you narrowed it, enter a Moonraker API key.
    * **Stock firmware**: enter the printer's serial number and its check
      code, the code the printer shows for LAN connections (the one
      OrcaSlicer and FlashPrint ask for when you add the printer).
@@ -161,8 +164,8 @@ zmod_nfc supports works, including ones the reader does not decode itself.
 ## Notes
 
 * The reader and the printers talk plain HTTP on your local network. Do not
-  expose the reader or zmod_nfc's port to the internet. Set a page password
-  and a `remote_token` if others share your network.
+  expose the reader or the printers to the internet. Set a page password if
+  others share your network.
 * A tag that only names a Spoolman spool (a Spoolman QR/NFC link) has no
   material or colour of its own: use the zmod_nfc method, which looks it up.
 * The reader sends a tag once; take it away and back to send it again, or

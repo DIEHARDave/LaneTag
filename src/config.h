@@ -8,9 +8,10 @@
 
 // How a scan reaches a printer.
 enum class Method : uint8_t {
-    ZmodNfc = 0,    // Zmod + zmod_nfc plugin: the raw tag read goes to the plugin's
-                    // listener, which decodes it, looks it up in Spoolman and shows
-                    // its slot prompt, like a USB reader on the printer
+    ZmodNfc = 0,    // Zmod + zmod_nfc plugin: the raw tag read goes through
+                    // Moonraker to the plugin's endpoint, which decodes it, looks it
+                    // up in Spoolman and shows its slot prompt, like a USB reader on
+                    // the printer
     ZmodBasic = 1,  // Zmod without the plugin: colour and material through
                     // Moonraker (CHANGE_ZCOLOR) and Moonraker's lane_data
     Stock = 2,      // stock Flashforge firmware: the local API's msConfig_cmd
@@ -20,7 +21,6 @@ enum class Method : uint8_t {
 enum class Model : uint8_t { AD5X = 0, Creator5 = 1 };
 
 constexpr size_t MAX_PRINTERS = 6;
-constexpr uint16_t ZMOD_NFC_PORT = 7140;
 constexpr uint16_t MOONRAKER_PORT = 7125;
 constexpr uint16_t FLASHFORGE_PORT = 8898;
 
@@ -32,7 +32,8 @@ struct PrinterConfig {
     uint16_t port = 0;          // 0: the method's default
     String serial;              // stock: printer serial number
     String checkCode;           // stock: the printer's check code
-    String token;               // zmod_nfc: remote_token, if the plugin sets one
+    String apiKey;              // Zmod methods: Moonraker API key, when the reader
+                                // is not in Moonraker's trusted_clients
 
     uint16_t effectivePort() const;
     String baseUrl() const;
@@ -64,7 +65,7 @@ const char *modelName(Model model);
 void loadConfig(Config &config);
 void saveConfig(const Config &config);
 
-// secrets=false leaves passwords, check codes and tokens out (only whether
+// secrets=false leaves passwords, check codes and API keys out (only whether
 // they are set).
 void configToJson(const Config &config, JsonObject out, bool secrets);
 // Applies a page's settings. Secrets missing from in keep their value.

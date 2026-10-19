@@ -290,7 +290,7 @@ $("rescan").onclick = () => api("/api/rescan", {});
 
 // --- Printers ---------------------------------------------------------------
 function printerCard(p, i) {
-  const ph = p.method === "zmod_nfc" ? 7140 : p.method === "zmod_basic" ? 7125 : 8898;
+  const ph = p.method === "stock" ? 8898 : 7125;
   return `<div class="printer" data-i="${i}">
   <div class="grid">
     <div><label>Name</label><input data-k="name" value="${esc(p.name)}" placeholder="AD5X"></div>
@@ -300,7 +300,7 @@ function printerCard(p, i) {
     <div><label>Port</label><input data-k="port" type="number" value="${p.port || ""}" placeholder="${ph}"></div>
     <div class="m-stock"><label>Serial number</label><input data-k="serial" value="${esc(p.serial)}"></div>
     <div class="m-stock"><label>Check code</label><input data-k="check_code" type="password" autocomplete="new-password" placeholder="${p.check_code_set ? "unchanged" : ""}"></div>
-    <div class="m-zmod_nfc"><label>Token (remote_token)</label><input data-k="token" type="password" autocomplete="new-password" placeholder="${p.token_set ? "unchanged" : "none"}"></div>
+    <div class="m-zmod"><label>Moonraker API key (if needed)</label><input data-k="api_key" type="password" autocomplete="new-password" placeholder="${p.api_key_set ? "unchanged" : "none"}"></div>
   </div>
   <div class="actions"><button class="btn test">Test</button><button class="btn danger remove">Remove</button><span class="msg"></span></div>
 </div>`;
@@ -309,8 +309,8 @@ function printerCard(p, i) {
 function showMethodFields(card) {
   const m = card.querySelector('[data-k="method"]').value;
   card.querySelectorAll(".m-stock").forEach(e => e.classList.toggle("hidden", m !== "stock"));
-  card.querySelectorAll(".m-zmod_nfc").forEach(e => e.classList.toggle("hidden", m !== "zmod_nfc"));
-  card.querySelector('[data-k="port"]').placeholder = m === "zmod_nfc" ? 7140 : m === "zmod_basic" ? 7125 : 8898;
+  card.querySelectorAll(".m-zmod").forEach(e => e.classList.toggle("hidden", m === "stock"));
+  card.querySelector('[data-k="port"]').placeholder = m === "stock" ? 8898 : 7125;
 }
 
 function renderPrinters() {
@@ -335,7 +335,7 @@ function collectPrinters() {
     const p = config.printers[+card.dataset.i];
     card.querySelectorAll("[data-k]").forEach(e => {
       const k = e.dataset.k;
-      if (k === "check_code" || k === "token") { if (e.value) p[k] = e.value; else delete p[k]; }
+      if (k === "check_code" || k === "api_key") { if (e.value) p[k] = e.value; else delete p[k]; }
       else if (k === "port") p.port = +e.value || 0;
       else p[k] = e.value.trim();
     });
@@ -352,7 +352,7 @@ $("savePrinters").onclick = async () => {
   const r = await api("/api/config", {printers: config.printers.map(p => {
     const o = {keep: p.keep ?? -1, name: p.name, host: p.host, model: p.model, method: p.method, port: p.port, serial: p.serial};
     if (p.check_code) o.check_code = p.check_code;
-    if (p.token) o.token = p.token;
+    if (p.api_key) o.api_key = p.api_key;
     return o;
   })});
   setStatus($("printersMsg"), r.ok ? "Saved" : r.error, r.ok);
