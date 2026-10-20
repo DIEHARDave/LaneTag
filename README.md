@@ -8,6 +8,24 @@ firmware or [Zmod](https://github.com/ghzserg/zmod), and needs no USB port on
 the printer. Everything is set up on the reader's own web page: Wi-Fi,
 printers and their IP addresses, and how each printer is reached.
 
+## What your printer needs
+
+> **Works on a new, out-of-the-box stock Flashforge AD5X or Creator 5 with
+> no modding at all.** Nothing is installed on the printer: the reader uses
+> the local network API that Flashforge's own firmware already has (the one
+> OrcaSlicer and FlashPrint use). On a stock printer a scan sets the
+> **slot's material and colour** - that is all the stock API offers.
+
+Everything beyond that needs [**Zmod**](https://github.com/ghzserg/zmod).
+The two plugins below are **optional extras, not requirements**:
+
+| Printer runs | What a scan gets you |
+|--------------|----------------------|
+| **Stock Flashforge firmware** (no mods) | Slot material and colour. The colour is matched to the closest one the stock screen can show. |
+| **Zmod** | The same, through Moonraker, plus the slot's **lane data** for OrcaSlicer. No plugin needed ("Zmod basic"). |
+| **Zmod + [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc)** (optional plugin) | The full integration: every tag format decoded on the printer, **Spoolman** spool matching, the slot **popup on the printer's screen** (or just insert the filament), and lane data with the spool's details - the same as a USB reader plugged into the printer. |
+| **+ [zmod_afclite](https://github.com/DIEHARDave/zmod_afclite)** (optional plugin, with zmod_nfc) | Each IFS slot (or Creator 5 toolhead) keeps track of its own Spoolman spool, and Moonraker's active spool follows the one in use. zmod_nfc works without it. |
+
 ```
            ┌────────── ESP32 + PN532 ──────────┐
  tag ────► │ read the whole tag (NTAG, MIFARE   │
@@ -23,16 +41,18 @@ printers and their IP addresses, and how each printer is reached.
 ```
 
 > **Status: early release.** Tested on an **ESP32-C3 SuperMini** with a
-> **PN532 over I2C** and a **Creator 5** running Zmod and zmod_nfc: OpenSpool
-> (NTAG) and Snapmaker (MIFARE Classic, keys derived from the UID) tags
-> read, sent through Moonraker, and assigned both from the printer's prompt
-> and with the reader fixed to one toolhead. The firmware
+> **PN532 over I2C**: OpenSpool (NTAG) and Snapmaker (MIFARE Classic, keys
+> derived from the UID) tags, assigned on a **Creator 5** and an **AD5X**
+> running Zmod and zmod_nfc (from the printer's prompt and with the reader
+> fixed to one slot), and to an **AD5X's stock screen** through the stock
+> API (Flashforge's own screen program, run under Zmod's `DISPLAY_ON`; the
+> same program and API as an unmodified printer). The firmware
 > builds for ESP32, ESP32-S3 and ESP32-C3 without warnings. Its decoders and
 > MIFARE key derivation match [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc)'s
 > (identical results for every tag in zmod_nfc's decoder tests, identical
 > Bambu, Creality and Snapmaker keys). Not yet tried: Bambu and Creality
-> tags, HSU wiring, the AD5X, and the
-> **Zmod basic** and **stock firmware** methods. Reports are welcome.
+> tags, HSU wiring, a factory-fresh printer, the stock method on the
+> Creator 5, and the **Zmod basic** method. Reports are welcome.
 
 ## Printer methods
 
@@ -42,7 +62,7 @@ Each printer on the reader's list uses one of three methods:
 |--------|--------------|------------------|
 | **Zmod + zmod_nfc** | Zmod with the [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc) plugin | The **whole tag read** goes through Moonraker to the plugin (no extra port or service on the printer), which handles it exactly like a tag on a USB reader plugged into the printer: it decodes every format zmod_nfc knows, looks the spool up in **Spoolman** (spool ID on the tag, or the tag's UID), shows its **slot popup on the printer's screen** (or takes the slot you insert filament into), sets the slot through zmod_afclite's `SET_SPOOL_ID` or Zmod's `CHANGE_ZCOLOR`, and fills in Moonraker's **lane_data** for OrcaSlicer. The reader's web page can pick the slot too. |
 | **Zmod basic** | Zmod, no plugin | Material and colour go to the slot through Moonraker (`CHANGE_ZCOLOR`), snapped to Zmod's material list and colour palette, and the slot's **lane_data** entry gets the material, colour, vendor, temperatures and the tag's Spoolman spool ID if it carries one. No Spoolman lookup. |
-| **Stock firmware** | Flashforge firmware | Material and colour through the printer's local API (`msConfig_cmd` on port 8898) - that is all the stock API offers. Needs the printer's **serial number** and **check code**. On the Creator 5, the colour is snapped to its 24-colour palette and the material to its list, as its firmware shows nothing else. |
+| **Stock firmware** | Flashforge firmware | Material and colour through the printer's local API (`msConfig_cmd` on port 8898) - that is all the stock API offers. Needs the printer's **serial number** and **check code**. The stock screens can only draw their own 24 colours (a different set on each model), so the colour is snapped to the closest one (CIEDE2000), and on the Creator 5 the material to its list. |
 
 With Zmod basic and stock, pick the slot on the reader's web page after a
 scan. With any method, a reader can also be fixed to one slot; see

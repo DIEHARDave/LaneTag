@@ -130,12 +130,20 @@ String nearestPalette(uint32_t color, JsonArrayConst palette) {
     return best;
 }
 
-// The Creator 5's stock firmware shows a slot colour only when it is one
-// of its palette entries, byte for byte (with '#'); materials from its list.
-const char *const C5_PALETTE[] = {
+// The stock screens draw a slot's colour only when it is one of their 24
+// palette entries, byte for byte as "#RRGGBB"; any other colour is stored
+// but not shown. Each model has its own palette.
+constexpr size_t PALETTE_SIZE = 24;
+const char *const C5_PALETTE[PALETTE_SIZE] = {
     "#FFFFFF", "#FFF245", "#DEF578", "#21CC3D", "#167A4B", "#156682", "#24E4A0", "#7BD9F0",
     "#4CAAF8", "#2E54DD", "#48358C", "#A341F7", "#F435F6", "#D5B4DE", "#FA6173", "#F82D29",
     "#805003", "#F9903B", "#FCEBD7", "#D5C5A1", "#B17C38", "#8C8C89", "#BEBEBE", "#1B1B1B",
+};
+// From the AD5X's stock firmwareExe (3.1.7), as its screen stores them.
+const char *const AD5X_PALETTE[PALETTE_SIZE] = {
+    "#FFFFFF", "#FEF043", "#DCF478", "#0ACC38", "#067749", "#0C6283", "#0DE2A0", "#75D9F3",
+    "#45A8F9", "#2750E0", "#46328E", "#A03CF7", "#F330F9", "#D4B0DC", "#F95D73", "#F72224",
+    "#7C4B00", "#F98D33", "#FDEBD5", "#D3C4A3", "#AF7836", "#898989", "#BCBCBC", "#161616",
 };
 const char *const C5_MATERIALS[] = {
     "PLA", "PETG", "PLA-CF", "PETG-CF", "ABS", "ASA", "SILK", "PET-CF", "PAHT-CF", "S-PAHT",
@@ -157,19 +165,54 @@ void toLab(uint32_t color, double lab[3]) {
     lab[2] = 200 * (f(y) - f(z));
 }
 
-String nearestC5Color(uint32_t color) {
+// CIEDE2000 colour difference of two CIELAB colours. Plain CIELAB distance
+// sends saturated blues to purple (#0022FF became "bright purple" on the
+// AD5X palette); CIEDE2000 corrects the hue in that region.
+double deltaE2000(const double lab1[3], const double lab2[3]) {
+    const double deg = M_PI / 180;
+    double c1 = hypot(lab1[1], lab1[2]), c2 = hypot(lab2[1], lab2[2]);
+    double cBar7 = pow((c1 + c2) / 2, 7);
+    double g = 0.5 * (1 - sqrt(cBar7 / (cBar7 + 6103515625.0)));    // 25^7
+    double a1 = (1 + g) * lab1[1], a2 = (1 + g) * lab2[1];
+    double c1p = hypot(a1, lab1[2]), c2p = hypot(a2, lab2[2]);
+    double h1 = fmod(atan2(lab1[2], a1) / deg + 360, 360);
+    double h2 = fmod(atan2(lab2[2], a2) / deg + 360, 360);
+    double dL = lab2[0] - lab1[0], dC = c2p - c1p, dh = 0;
+    if (c1p * c2p != 0) {
+        dh = h2 - h1;
+        if (dh > 180) dh -= 360;
+        else if (dh < -180) dh += 360;
+    }
+    double dH = 2 * sqrt(c1p * c2p) * sin(dh / 2 * deg);
+    double lBar = (lab1[0] + lab2[0]) / 2, cBarP = (c1p + c2p) / 2, hBar = h1 + h2;
+    if (c1p * c2p != 0) {
+        if (fabs(h1 - h2) <= 180) hBar = (h1 + h2) / 2;
+        else hBar = (h1 + h2 < 360 ? h1 + h2 + 360 : h1 + h2 - 360) / 2;
+    }
+    double t = 1 - 0.17 * cos((hBar - 30) * deg) + 0.24 * cos(2 * hBar * deg) +
+               0.32 * cos((3 * hBar + 6) * deg) - 0.20 * cos((4 * hBar - 63) * deg);
+    double sl = 1 + 0.015 * (lBar - 50) * (lBar - 50) / sqrt(20 + (lBar - 50) * (lBar - 50));
+    double sc = 1 + 0.045 * cBarP, sh = 1 + 0.015 * cBarP * t;
+    double cBarP7 = pow(cBarP, 7);
+    double rt = -2 * sqrt(cBarP7 / (cBarP7 + 6103515625.0)) *
+                sin(60 * exp(-pow((hBar - 275) / 25, 2)) * deg);
+    double l = dL / sl, c = dC / sc, h = dH / sh;
+    return sqrt(l * l + c * c + h * h + rt * c * h);
+}
+
+// Closest palette entry by CIEDE2000.
+String nearestStockColor(uint32_t color, const char *const *palette) {
     double source[3];
     toLab(color, source);
-    const char *best = C5_PALETTE[0];
+    const char *best = palette[0];
     double bestDistance = 1e18;
-    for (const char *entry : C5_PALETTE) {
+    for (size_t n = 0; n < PALETTE_SIZE; n++) {
         double lab[3];
-        toLab(strtol(entry + 1, nullptr, 16), lab);
-        double d = 0;
-        for (int i = 0; i < 3; i++) d += (source[i] - lab[i]) * (source[i] - lab[i]);
+        toLab(strtol(palette[n] + 1, nullptr, 16), lab);
+        double d = deltaE2000(source, lab);
         if (d < bestDistance) {
             bestDistance = d;
-            best = entry;
+            best = palette[n];
         }
     }
     return best;
@@ -540,18 +583,20 @@ PrinterReply stockAssign(const PrinterConfig &printer, const Filament &f, int sl
                                   : "No filament data on this tag";
         return reply;
     }
-    String material, rgb;
-    if (printer.model == Model::Creator5) {
+    String material;
+    bool c5 = printer.model == Model::Creator5;
+    if (c5) {
         material = c5Material(f);
         if (!material.length()) {
             reply.message = f.material + " is not a Creator 5 material";
             return reply;
         }
-        rgb = nearestC5Color(f.color >= 0 ? f.color : 0xFFFFFF);
     } else {
+        // The AD5X shows any material name.
         material = upper(f.material.length() ? f.material : "PLA");
-        rgb = f.color >= 0 ? f.colorHex() : "FFFFFF";
     }
+    uint32_t color = f.color >= 0 ? f.color : 0xFFFFFF;
+    String rgb = nearestStockColor(color, c5 ? C5_PALETTE : AD5X_PALETTE);
     JsonDocument body, response;
     stockAuth(printer, body);
     body["payload"]["cmd"] = "msConfig_cmd";
@@ -561,7 +606,9 @@ PrinterReply stockAssign(const PrinterConfig &printer, const Filament &f, int sl
     args["rgb"] = rgb;
     if (!stockCall(printer, "/control", body, response, reply.message)) return reply;
     reply.ok = true;
-    reply.message = "Slot " + String(slot) + " is now " + material + " " + (rgb.startsWith("#") ? "" : "#") + rgb;
+    reply.message = "Slot " + String(slot) + " is now " + material + " " + rgb;
+    if (f.color >= 0 && rgb.substring(1) != f.colorHex())
+        reply.message += " (the screen's closest colour to #" + f.colorHex() + ")";
     return reply;
 }
 
