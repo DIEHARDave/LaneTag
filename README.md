@@ -1,7 +1,8 @@
 # zmod_esp32-nfc
 
 A Wi-Fi NFC/RFID filament tag reader for the **Flashforge AD5X** and
-**Flashforge Creator 5**, built from an **ESP32** and a **PN532** module.
+**Flashforge Creator 5**, built from an **ESP32** and a **PN532**, **RC522**
+or **PN5180** module.
 Hold a spool's tag to the reader and the printer's slot gets the spool's
 material and colour. One reader can serve several printers, running stock
 firmware or [Zmod](https://github.com/ghzserg/zmod), and needs no USB port on
@@ -31,10 +32,11 @@ printer is given a fixed slot on the reader (see
 [Printer methods](#printer-methods)).
 
 ```
-           ┌────────── ESP32 + PN532 ──────────┐
+           ┌──── ESP32 + PN532/RC522/PN5180 ───┐
  tag ────► │ read the whole tag (NTAG, MIFARE   │
            │ Classic with Bambu/Creality/       │
-           │ Snapmaker keys, Type 4)            │
+           │ Snapmaker keys, Type 4; ISO 15693  │
+           │ / OpenPrintTag on the PN5180)      │
            └──────┬──────────────┬──────────┬───┘
                   │              │          │
       Zmod + zmod_nfc      Zmod basic     Stock firmware
@@ -56,7 +58,11 @@ printer is given a fixed slot on the reader (see
 > (identical results for every tag in zmod_nfc's decoder tests, identical
 > Bambu, Creality and Snapmaker keys). Not yet tried: Bambu and Creality
 > tags, HSU wiring, a factory-fresh printer, the stock method on the
-> Creator 5, and the **Zmod basic** method. Reports are welcome.
+> Creator 5, and the **Zmod basic** method. **RC522 and PN5180 support is
+> new and has not been run on hardware yet** (it builds; both drivers are
+> written from the NXP datasheets, the PN5180's command layer follows
+> zmod_nfc's). The OpenPrintTag decoder gives the same results as
+> zmod_nfc's on its six OpenPrintTag test dumps. Reports are welcome.
 
 ## Printer methods
 
@@ -82,10 +88,15 @@ Each printer on the reader's list uses one of three methods:
 
 * An **ESP32** board: classic ESP32 (DevKit, WROOM-32), ESP32-S3 or
   ESP32-C3 (SuperMini works).
-* A **PN532** module, e.g. the common red or blue "PN532 NFC RFID V3" boards
-  or Elechouse's. The PN532 reads ISO 14443A tags: NTAG21x, MIFARE
-  Ultralight, MIFARE Classic and Type 4. It cannot read ISO 15693 tags
-  (OpenPrintTag); zmod_nfc with an ACR1552U can.
+* A reader module, one of:
+  * a **PN532**, e.g. the common red or blue "PN532 NFC RFID V3" boards or
+    Elechouse's (good range, the tested one);
+  * an **RC522** (MFRC522), the cheap blue "RFID-RC522" board, on SPI;
+  * a **PN5180** board, on SPI. The only one of the three that also reads
+    **ISO 15693** tags (ICODE SLIX/SLIX2), which **OpenPrintTag** uses.
+
+  All three read ISO 14443A tags: NTAG21x, MIFARE Ultralight, MIFARE
+  Classic and Type 4.
 * ESP32-C3 SuperMini boards have a weak antenna. If the reader drops off
   your network, change **Settings > Wi-Fi transmit power**: the usual advice
   of 8.5 dBm lost most packets on the tested board, which worked well from
@@ -94,6 +105,11 @@ Each printer on the reader's list uses one of three methods:
   default (GPIO 2 on ESP32 DevKits, GPIO 8 on the C3 SuperMini).
 
 ### Wiring
+
+Pick the reader on the web page (**Settings > NFC reader**); the pins
+below are the defaults and can all be changed there.
+
+#### PN532
 
 Power the PN532 from **3.3 V**, so its signals stay at the ESP32's 3.3 V
 levels. Set the PN532's mode switches for the bus you use:
@@ -118,6 +134,64 @@ PN532          ESP32 (I2C)          PN532          ESP32 (HSU)
  SDA  ──────── GPIO 21               TXD  ──────── GPIO 16 (RX)
  SCL  ──────── GPIO 22               RXD  ──────── GPIO 17 (TX)
 ```
+
+#### RC522
+
+The RC522 is a **3.3 V only** chip: power it from 3V3, never 5 V. It talks
+SPI; its **SDA** pin is the SPI chip select. IRQ stays unconnected. RST can
+go to 3V3 instead of a GPIO (set the RST pin to -1).
+
+| Board | SCK | MISO | MOSI | SDA (SS) | RST |
+|-------|-----|------|------|----------|-----|
+| ESP32 | 18 | 19 | 23 | 5 | 4 |
+| ESP32-S3 | 12 | 13 | 11 | 10 | 14 |
+| ESP32-C3 | 4 | 5 | 6 | 7 | 3 |
+
+```
+RC522          ESP32
+ 3.3V ──────── 3V3
+ GND  ──────── GND
+ SDA  ──────── GPIO 5
+ SCK  ──────── GPIO 18
+ MOSI ──────── GPIO 23
+ MISO ──────── GPIO 19
+ RST  ──────── GPIO 4
+ IRQ           (not connected)
+```
+
+The RC522's antenna is small: hold the tag flat on the board, within
+2-3 cm. One tag at a time: with two tags in the field the RC522 reads
+neither.
+
+#### PN5180
+
+The usual PN5180 boards have both a **5V** pin (the RF transmitter) and a
+**3.3V** pin (the chip's logic and its SPI levels): connect both. Besides
+SPI it needs **BUSY**; RST is optional (-1 when it is not wired). IRQ,
+GPIO, AUX and REQ stay unconnected.
+
+| Board | SCK | MISO | MOSI | NSS | BUSY | RST |
+|-------|-----|------|------|-----|------|-----|
+| ESP32 | 18 | 19 | 23 | 5 | 27 | 4 |
+| ESP32-S3 | 12 | 13 | 11 | 10 | 15 | 14 |
+| ESP32-C3 | 4 | 5 | 6 | 7 | 10 | 3 |
+
+```
+PN5180         ESP32
+ 5V   ──────── 5V (VIN)
+ 3.3V ──────── 3V3
+ GND  ──────── GND
+ NSS  ──────── GPIO 5
+ SCK  ──────── GPIO 18
+ MOSI ──────── GPIO 23
+ MISO ──────── GPIO 19
+ BUSY ──────── GPIO 27
+ RST  ──────── GPIO 4
+```
+
+The PN5180 looks for an ISO 14443A tag and an ISO 15693 tag in turn, so a
+tag can take a moment longer to be noticed than on the PN532. One tag at a
+time, as with the RC522.
 
 ## Install
 
@@ -205,7 +279,7 @@ when the printer took it, three short ones on an error.
 | SpoolEase, Anycubic, Elegoo, Qidi | yes | yes |
 | Simple text (`PLA:FF0000`, JSON) | yes | yes |
 | TigerTag, OpenTag3D | no | yes |
-| OpenPrintTag (ISO 15693) | the PN532 cannot read these | yes, with an ACR1552U or PN5180 on the printer |
+| OpenPrintTag (ISO 15693) | yes, with a PN5180 (the PN532 and RC522 cannot read ISO 15693) | yes |
 
 The reader derives the Bambu, Creality and Snapmaker MIFARE keys from each
 tag's UID, as zmod_nfc does, so those tags are read completely. With the

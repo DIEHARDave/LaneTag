@@ -7,9 +7,10 @@
 #include <Arduino.h>
 #include <vector>
 
-enum class TagKind : uint8_t { Unknown, Type2, MifareClassic, Type4 };
+enum class TagKind : uint8_t { Unknown, Type2, MifareClassic, Type4, Type5 };
 
-// zmod_nfc's names for the kinds ("type2", "mifare_classic", "type4").
+// zmod_nfc's names for the kinds ("type2", "mifare_classic", "type4",
+// "type5").
 const char *tagKindName(TagKind kind);
 
 constexpr size_t MIFARE_BLOCK = 16;
@@ -23,8 +24,10 @@ struct Tag {
     TagKind kind = TagKind::Unknown;
     // Memory from the first page/block, as on the datasheet. Type 2: pages
     // 0..n. MIFARE Classic: every block; sectors that did not open and the
-    // sector trailers stay zero.
+    // sector trailers stay zero. Type 5 (ISO 15693): blocks 0..n.
     std::vector<uint8_t> memory;
+    // Type 5: bytes per block.
+    uint8_t blockSize = 4;
     // Type 4: the NDEF file.
     std::vector<uint8_t> ndef;
     // MIFARE Classic: the name of the key family that opened each sector

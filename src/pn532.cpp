@@ -186,7 +186,7 @@ int Pn532::command(uint8_t cmd, const uint8_t *params, size_t len, uint8_t *out,
     return count;
 }
 
-bool Pn532::listTarget(Pn532Target &target) {
+bool Pn532::listTarget(NfcTarget &target) {
     const uint8_t params[] = {0x01, 0x00};          // one target, 106 kbps type A
     uint8_t resp[32];
     int n = command(CMD_IN_LIST_PASSIVE_TARGET, params, sizeof(params), resp, sizeof(resp), 300);

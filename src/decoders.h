@@ -4,7 +4,7 @@
 // The device decodes for the stock-firmware and "Zmod basic" methods and
 // for its own web page. With the zmod_nfc method the printer plugin gets
 // the raw read and decodes it itself, with every format it knows
-// (OpenPrintTag, OpenTag3D and TigerTag are only decoded there).
+// (OpenTag3D and TigerTag are only decoded there).
 #pragma once
 
 #include <ArduinoJson.h>

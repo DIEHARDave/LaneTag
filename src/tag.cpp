@@ -5,6 +5,7 @@ const char *tagKindName(TagKind kind) {
     case TagKind::Type2: return "type2";
     case TagKind::MifareClassic: return "mifare_classic";
     case TagKind::Type4: return "type4";
+    case TagKind::Type5: return "type5";
     default: return "unknown";
     }
 }
@@ -31,9 +32,11 @@ int Tag::sectorsRead() const {
 
 String Tag::describe() const {
     String text = String(tagKindName(kind)) + ", UID " + uidHex();
-    char sakText[12];
-    snprintf(sakText, sizeof(sakText), ", SAK %02X", sak);
-    text += sakText;
+    if (kind != TagKind::Type5) {
+        char sakText[12];
+        snprintf(sakText, sizeof(sakText), ", SAK %02X", sak);
+        text += sakText;
+    }
     if (kind == TagKind::MifareClassic)
         text += ", " + String(sectorsRead()) + "/" + String(mifareSectorCount(memory.size())) + " sectors";
     else if (kind == TagKind::Type4)

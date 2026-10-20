@@ -9,42 +9,34 @@
 #include <HardwareSerial.h>
 #include <Wire.h>
 
+#include "nfc_chip.h"
+
 enum class Pn532Bus : uint8_t { I2C = 0, UART = 1 };
 
-struct Pn532Target {
-    uint8_t uid[10] = {};
-    uint8_t uidLen = 0;
-    uint8_t atqa[2] = {};
-    uint8_t sak = 0;
-    bool sameCard(const Pn532Target &other) const {
-        return uidLen == other.uidLen && memcmp(uid, other.uid, uidLen) == 0;
-    }
-};
-
-class Pn532 {
+class Pn532 : public NfcChip {
 public:
     void attachI2C(TwoWire &wire, int sda, int scl);
     void attachUart(HardwareSerial &serial, int rx, int tx, uint32_t baud = 115200);
     // Wake the chip, read its firmware version and set short RF retries.
-    bool init();
-    void end();
-    bool ready() const { return ok_; }
-    String firmware() const { return firmware_; }
-    const char *busName() const { return bus_ == Pn532Bus::I2C ? "I2C" : "UART"; }
+    bool init() override;
+    void end() override;
+    bool ready() const override { return ok_; }
+    const char *chipName() const override { return "PN532"; }
+    String firmware() const override { return firmware_; }
+    const char *busName() const override { return bus_ == Pn532Bus::I2C ? "I2C" : "UART"; }
 
     // Response data after the response code, or -1. expect is the largest
     // response wanted (I2C reads that many bytes in one transfer).
     int command(uint8_t cmd, const uint8_t *params, size_t len, uint8_t *out, size_t expect,
                 uint32_t timeoutMs = 1000, bool wake = false);
 
-    bool listTarget(Pn532Target &target);
+    bool listTarget(NfcTarget &target) override;
     // InDataExchange with the selected target: the card's answer (without
     // the status byte), or -1 when the PN532 or the card reported an error.
     int exchange(const uint8_t *data, size_t len, uint8_t *out, size_t expect,
-                 uint32_t timeoutMs = 1000);
-    void release();
-    // Failed commands in a row; the caller re-inits the chip after a few.
-    int failures() const { return failures_; }
+                 uint32_t timeoutMs = 1000) override;
+    void release() override;
+    int failures() const override { return failures_; }
 
 private:
     bool writeFrame(const uint8_t *data, size_t len, bool wake);

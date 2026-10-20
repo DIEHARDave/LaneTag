@@ -78,6 +78,11 @@ std::vector<uint8_t> tagMessage(const Tag &tag) {
         return {};
     case TagKind::MifareClassic:
         return mifareMessage(tag);
+    case TagKind::Type5:
+        // 4 byte CC (E1/E2 ...), or 8 bytes when its size byte is 0.
+        if (tag.memory.size() > 8 && (tag.memory[0] == 0xE1 || tag.memory[0] == 0xE2))
+            return findTlvMessage(tag.memory.data(), tag.memory.size(), tag.memory[2] == 0 ? 8 : 4);
+        return {};
     default:
         return {};
     }

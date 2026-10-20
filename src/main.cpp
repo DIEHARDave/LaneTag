@@ -1,5 +1,5 @@
-// zmod_esp32-nfc: an ESP32 + PN532 network NFC reader for Flashforge AD5X
-// and Creator 5 printers.
+// zmod_esp32-nfc: an ESP32 + PN532, RC522 or PN5180 network NFC reader for
+// Flashforge AD5X and Creator 5 printers.
 //
 // A scanned tag goes to the active printer (chosen on the web page):
 //   zmod_nfc    the whole read goes to the zmod_nfc plugin, which decodes

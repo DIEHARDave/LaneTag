@@ -119,13 +119,20 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
     <div class="msg" id="wifiMsg"></div>
   </div>
   <div class="card">
-    <h2>PN532 reader</h2>
+    <h2>NFC reader</h2>
     <div class="grid">
-      <div><label for="bus">Connection</label><select id="bus"><option value="i2c">I2C</option><option value="uart">HSU (UART)</option></select></div>
-      <div class="i2c"><label for="sda">SDA pin</label><input id="sda" type="number"></div>
-      <div class="i2c"><label for="scl">SCL pin</label><input id="scl" type="number"></div>
-      <div class="uart"><label for="rx">RX pin (to PN532 TX)</label><input id="rx" type="number"></div>
-      <div class="uart"><label for="tx">TX pin (to PN532 RX)</label><input id="tx" type="number"></div>
+      <div><label for="chip">Reader</label><select id="chip"><option value="pn532">PN532</option><option value="rc522">RC522 (SPI)</option><option value="pn5180">PN5180 (SPI)</option></select></div>
+      <div class="pn532"><label for="bus">Connection</label><select id="bus"><option value="i2c">I2C</option><option value="uart">HSU (UART)</option></select></div>
+      <div class="pn532 i2c"><label for="sda">SDA pin</label><input id="sda" type="number"></div>
+      <div class="pn532 i2c"><label for="scl">SCL pin</label><input id="scl" type="number"></div>
+      <div class="pn532 uart"><label for="rx">RX pin (to PN532 TX)</label><input id="rx" type="number"></div>
+      <div class="pn532 uart"><label for="tx">TX pin (to PN532 RX)</label><input id="tx" type="number"></div>
+      <div class="spi"><label for="sck">SCK pin</label><input id="sck" type="number"></div>
+      <div class="spi"><label for="miso">MISO pin</label><input id="miso" type="number"></div>
+      <div class="spi"><label for="mosi">MOSI pin</label><input id="mosi" type="number"></div>
+      <div class="spi"><label for="ss" id="ssLabel">SDA (SS) pin</label><input id="ss" type="number"></div>
+      <div class="pn5180"><label for="busy">BUSY pin</label><input id="busy" type="number"></div>
+      <div class="spi"><label for="rst">RST pin (-1: not wired)</label><input id="rst" type="number"></div>
       <div><label for="ledPin">LED pin (-1: none)</label><input id="ledPin" type="number"></div>
       <div><label for="ledLow">LED lights when</label><select id="ledLow"><option value="0">high</option><option value="1">low</option></select></div>
       <div><label for="buzzerPin">Buzzer pin (-1: none)</label><input id="buzzerPin" type="number"></div>
@@ -385,20 +392,27 @@ $("savePrinters").onclick = async () => {
 
 // --- Settings ----------------------------------------------------------------
 function showBus() {
-  const uart = $("bus").value === "uart";
-  document.querySelectorAll(".uart").forEach(e => e.classList.toggle("hidden", !uart));
-  document.querySelectorAll(".i2c").forEach(e => e.classList.toggle("hidden", uart));
+  const chip = $("chip").value, spi = chip !== "pn532", uart = $("bus").value === "uart";
+  document.querySelectorAll(".pn532").forEach(e => e.classList.toggle("hidden", spi));
+  document.querySelectorAll(".spi").forEach(e => e.classList.toggle("hidden", !spi));
+  document.querySelectorAll(".pn5180").forEach(e => e.classList.toggle("hidden", chip !== "pn5180"));
+  document.querySelectorAll(".pn532.uart").forEach(e => e.classList.toggle("hidden", spi || !uart));
+  document.querySelectorAll(".pn532.i2c").forEach(e => e.classList.toggle("hidden", spi || uart));
+  $("ssLabel").textContent = chip === "pn5180" ? "NSS pin" : "SDA (SS) pin";
 }
+$("chip").onchange = showBus;
 $("bus").onchange = showBus;
 
+const READER_PINS = ["sda", "scl", "rx", "tx", "sck", "miso", "mosi", "ss", "rst", "busy"];
 function renderSettings() {
   $("ssid").value = config.wifi_ssid;
   $("wifiPass").placeholder = config.wifi_pass_set ? "unchanged" : "";
   $("hostname").value = config.hostname;
   $("uiPassword").placeholder = config.ui_password_set ? "unchanged" : "none";
   $("wifiPower").value = String(config.wifi_power || 0);
+  $("chip").value = config.reader.chip || "pn532";
   $("bus").value = config.reader.bus;
-  for (const k of ["sda", "scl", "rx", "tx"]) $(k).value = config.reader[k];
+  for (const k of READER_PINS) $(k).value = config.reader[k];
   $("ledPin").value = config.led_pin;
   $("ledLow").value = config.led_active_low ? 1 : 0;
   $("buzzerPin").value = config.buzzer_pin;
@@ -412,7 +426,7 @@ $("wifiPower").onchange = async () => {
 async function saveSettings(msg, join) {
   const body = {
     wifi_ssid: $("ssid").value.trim(), hostname: $("hostname").value.trim(),
-    reader: {bus: $("bus").value, sda: +$("sda").value, scl: +$("scl").value, rx: +$("rx").value, tx: +$("tx").value},
+    reader: Object.assign({chip: $("chip").value, bus: $("bus").value}, ...READER_PINS.map(k => ({[k]: +$(k).value}))),
     led_pin: +$("ledPin").value, led_active_low: $("ledLow").value === "1", buzzer_pin: +$("buzzerPin").value,
   };
   if ($("wifiPass").value) body.wifi_pass = $("wifiPass").value;

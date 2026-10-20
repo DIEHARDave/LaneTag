@@ -10,15 +10,21 @@ const char *const NVS_KEY = "config";
 // Default pins per chip; all can be changed on the web page.
 #if CONFIG_IDF_TARGET_ESP32S3
 constexpr int DEFAULT_SDA = 8, DEFAULT_SCL = 9, DEFAULT_RX = 18, DEFAULT_TX = 17;
+constexpr int DEFAULT_SCK = 12, DEFAULT_MISO = 13, DEFAULT_MOSI = 11, DEFAULT_SS = 10, DEFAULT_RST = 14;
+constexpr int DEFAULT_BUSY = 15;
 constexpr int DEFAULT_LED = -1;
 constexpr bool DEFAULT_LED_LOW = false;
 #elif CONFIG_IDF_TARGET_ESP32C3
 // SuperMini: the blue LED is on GPIO 8 (lit when low).
 constexpr int DEFAULT_SDA = 6, DEFAULT_SCL = 7, DEFAULT_RX = 20, DEFAULT_TX = 21;
+constexpr int DEFAULT_SCK = 4, DEFAULT_MISO = 5, DEFAULT_MOSI = 6, DEFAULT_SS = 7, DEFAULT_RST = 3;
+constexpr int DEFAULT_BUSY = 10;
 constexpr int DEFAULT_LED = 8;
 constexpr bool DEFAULT_LED_LOW = true;
 #else
 constexpr int DEFAULT_SDA = 21, DEFAULT_SCL = 22, DEFAULT_RX = 16, DEFAULT_TX = 17;
+constexpr int DEFAULT_SCK = 18, DEFAULT_MISO = 19, DEFAULT_MOSI = 23, DEFAULT_SS = 5, DEFAULT_RST = 4;
+constexpr int DEFAULT_BUSY = 27;
 constexpr int DEFAULT_LED = 2;
 constexpr bool DEFAULT_LED_LOW = false;
 #endif
@@ -35,6 +41,12 @@ void setDefaults(Config &config) {
     config.reader.scl = DEFAULT_SCL;
     config.reader.rx = DEFAULT_RX;
     config.reader.tx = DEFAULT_TX;
+    config.reader.sck = DEFAULT_SCK;
+    config.reader.miso = DEFAULT_MISO;
+    config.reader.mosi = DEFAULT_MOSI;
+    config.reader.ss = DEFAULT_SS;
+    config.reader.rst = DEFAULT_RST;
+    config.reader.busy = DEFAULT_BUSY;
     config.ledPin = DEFAULT_LED;
     config.ledActiveLow = DEFAULT_LED_LOW;
     // The last two bytes of the MAC address, as on the setup access point.
@@ -86,11 +98,20 @@ void configToJson(const Config &config, JsonObject out, bool secrets) {
     out["wifi_power"] = config.wifiPower / 4.0;
     out["active"] = config.active;
     JsonObject reader = out["reader"].to<JsonObject>();
+    reader["chip"] = config.reader.chip == ReaderChip::RC522    ? "rc522"
+                     : config.reader.chip == ReaderChip::PN5180 ? "pn5180"
+                                                                : "pn532";
     reader["bus"] = config.reader.bus == Pn532Bus::UART ? "uart" : "i2c";
     reader["sda"] = config.reader.sda;
     reader["scl"] = config.reader.scl;
     reader["rx"] = config.reader.rx;
     reader["tx"] = config.reader.tx;
+    reader["sck"] = config.reader.sck;
+    reader["miso"] = config.reader.miso;
+    reader["mosi"] = config.reader.mosi;
+    reader["ss"] = config.reader.ss;
+    reader["rst"] = config.reader.rst;
+    reader["busy"] = config.reader.busy;
     out["led_pin"] = config.ledPin;
     out["led_active_low"] = config.ledActiveLow;
     out["buzzer_pin"] = config.buzzerPin;
@@ -129,12 +150,27 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
     }
     JsonObjectConst reader = in["reader"];
     if (!reader.isNull()) {
+        String chip = reader["chip"] | "pn532";
+        next.reader.chip = chip == "rc522"    ? ReaderChip::RC522
+                           : chip == "pn5180" ? ReaderChip::PN5180
+                                              : ReaderChip::PN532;
         String bus = reader["bus"] | "i2c";
         next.reader.bus = bus == "uart" ? Pn532Bus::UART : Pn532Bus::I2C;
         next.reader.sda = pin(reader["sda"], next.reader.sda);
         next.reader.scl = pin(reader["scl"], next.reader.scl);
         next.reader.rx = pin(reader["rx"], next.reader.rx);
         next.reader.tx = pin(reader["tx"], next.reader.tx);
+        next.reader.sck = pin(reader["sck"], next.reader.sck);
+        next.reader.miso = pin(reader["miso"], next.reader.miso);
+        next.reader.mosi = pin(reader["mosi"], next.reader.mosi);
+        next.reader.ss = pin(reader["ss"], next.reader.ss);
+        next.reader.rst = pin(reader["rst"], next.reader.rst);
+        next.reader.busy = pin(reader["busy"], next.reader.busy);
+        bool spi = next.reader.chip != ReaderChip::PN532;
+        if (spi && (next.reader.sck < 0 || next.reader.miso < 0 || next.reader.mosi < 0 || next.reader.ss < 0))
+            return next.reader.chip == ReaderChip::RC522 ? "the RC522 needs its SCK, MISO, MOSI and SDA (SS) pins"
+                                                         : "the PN5180 needs its SCK, MISO, MOSI and NSS pins";
+        if (next.reader.chip == ReaderChip::PN5180 && next.reader.busy < 0) return "the PN5180 needs its BUSY pin";
     }
     next.ledPin = pin(in["led_pin"], next.ledPin);
     if (!in["led_active_low"].isNull()) next.ledActiveLow = in["led_active_low"].as<bool>();
@@ -178,9 +214,13 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
     if (next.active >= (int)next.printers.size()) next.active = 0;
 
     restart = next.wifiSsid != config.wifiSsid || next.wifiPass != config.wifiPass ||
-              next.hostname != config.hostname || next.reader.bus != config.reader.bus ||
+              next.hostname != config.hostname || next.reader.chip != config.reader.chip ||
+              next.reader.bus != config.reader.bus ||
               next.reader.sda != config.reader.sda || next.reader.scl != config.reader.scl ||
               next.reader.rx != config.reader.rx || next.reader.tx != config.reader.tx ||
+              next.reader.sck != config.reader.sck || next.reader.miso != config.reader.miso ||
+              next.reader.mosi != config.reader.mosi || next.reader.ss != config.reader.ss ||
+              next.reader.rst != config.reader.rst || next.reader.busy != config.reader.busy ||
               next.ledPin != config.ledPin || next.buzzerPin != config.buzzerPin;
     config = next;
     return "";

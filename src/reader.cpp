@@ -18,6 +18,15 @@ constexpr int REMOVAL_MISSES = 2;
 constexpr uint32_t REINIT_INTERVAL = 5000;
 // Type 4 read size; the I2C transfer must hold it.
 constexpr size_t TYPE4_CHUNK = 96;
+// ISO 15693 tags that do not report their size: ICODE SLIX2 (320 bytes).
+constexpr int TYPE5_MAX_BLOCKS = 80;
+// Bytes per multiple block read.
+constexpr int TYPE5_READ_MAX = 64;
+
+constexpr uint8_t ISO15693_ADDRESSED = 0x22;   // addressed, high data rate
+constexpr uint8_t ISO15693_READ_SINGLE = 0x20;
+constexpr uint8_t ISO15693_READ_MULTIPLE = 0x23;
+constexpr uint8_t ISO15693_SYSTEM_INFO = 0x2B;
 
 // Offset just past the NDEF TLV of a Type 2 memory image, or -1.
 int ndefEnd(const std::vector<uint8_t> &memory) {
@@ -36,39 +45,59 @@ int ndefEnd(const std::vector<uint8_t> &memory) {
 
 void TagReader::begin(const ReaderPins &pins) {
     pins_ = pins;
-    if (pins.bus == Pn532Bus::I2C)
-        chip_.attachI2C(Wire, pins.sda, pins.scl);
-    else
-        chip_.attachUart(Serial1, pins.rx, pins.tx);
+    if (pins.chip == ReaderChip::RC522) {
+        rc522_.attach(SPI, pins.sck, pins.miso, pins.mosi, pins.ss, pins.rst);
+        chip_ = &rc522_;
+    } else if (pins.chip == ReaderChip::PN5180) {
+        pn5180_.attach(SPI, pins.sck, pins.miso, pins.mosi, pins.ss, pins.busy, pins.rst);
+        chip_ = &pn5180_;
+    } else {
+        if (pins.bus == Pn532Bus::I2C)
+            pn532_.attachI2C(Wire, pins.sda, pins.scl);
+        else
+            pn532_.attachUart(Serial1, pins.rx, pins.tx);
+        chip_ = &pn532_;
+    }
     nextInit_ = 0;
 }
 
 String TagReader::describe() const {
-    if (!chip_.ready()) return "PN532 not found (" + String(chip_.busName()) + ")";
-    return "PN532 v" + chip_.firmware() + " (" + chip_.busName() + ")";
+    String name = chip_->chipName();
+    if (!chip_->ready()) return name + " not found (" + chip_->busName() + ")";
+    return name + " v" + chip_->firmware() + " (" + chip_->busName() + ")";
 }
 
 bool TagReader::poll(Tag &tag) {
-    if (!chip_.ready()) {
+    if (!chip_->ready()) {
         if ((int32_t)(millis() - nextInit_) < 0) return false;
         nextInit_ = millis() + REINIT_INTERVAL;
-        if (!chip_.init()) {
-            String error = String("no PN532 answering on ") + chip_.busName();
-            if (pins_.bus == Pn532Bus::I2C) error += " (" + scanI2C() + ")";
-            error += "; check the wiring and the mode switches";
+        if (!chip_->init()) {
+            String error = String("no ") + chip_->chipName() + " answering on " + chip_->busName();
+            if (pins_.chip == ReaderChip::RC522) {
+                error += " (SCK " + String(pins_.sck) + ", MISO " + String(pins_.miso) + ", MOSI " +
+                         String(pins_.mosi) + ", SDA/SS " + String(pins_.ss) + ")";
+                error += "; check the wiring and that it has 3.3 V";
+            } else if (pins_.chip == ReaderChip::PN5180) {
+                error += " (SCK " + String(pins_.sck) + ", MISO " + String(pins_.miso) + ", MOSI " +
+                         String(pins_.mosi) + ", NSS " + String(pins_.ss) + ", BUSY " + String(pins_.busy) + ")";
+                error += "; check the wiring and that it has 5 V and 3.3 V";
+            } else {
+                if (pins_.bus == Pn532Bus::I2C) error += " (" + scanI2C() + ")";
+                error += "; check the wiring and the mode switches";
+            }
             if (error != error_) log_w("%s", error.c_str());
             error_ = error;
             return false;
         }
         error_ = "";
-        log_i("PN532 firmware %s", chip_.firmware().c_str());
+        log_i("%s firmware %s", chip_->chipName(), chip_->firmware().c_str());
     }
-    Pn532Target target;
-    if (!chip_.listTarget(target)) {
-        if (chip_.failures() >= 5) {
-            chip_.end();
+    NfcTarget target;
+    if (!findCard(target)) {
+        if (chip_->failures() >= 5) {
+            chip_->end();
             begin(pins_);
-            error_ = "PN532 stopped answering";
+            error_ = String(chip_->chipName()) + " stopped answering";
             return false;
         }
         if (++misses_ >= REMOVAL_MISSES) presentLen_ = 0;
@@ -76,7 +105,7 @@ bool TagReader::poll(Tag &tag) {
     }
     misses_ = 0;
     if (presentLen_ == target.uidLen && memcmp(present_, target.uid, presentLen_) == 0) {
-        chip_.release();
+        chip_->release();
         return false;
     }
     tag = Tag();
@@ -87,14 +116,16 @@ bool TagReader::poll(Tag &tag) {
 
     uint8_t sak = target.sak;
     bool ok;
-    if (sak & 0x08 || sak == 0x01 || sak == 0x09 || sak == 0x10 || sak == 0x11 || sak == 0x18 ||
+    if (target.iso15693)
+        ok = readType5(target, tag);
+    else if (sak & 0x08 || sak == 0x01 || sak == 0x09 || sak == 0x10 || sak == 0x11 || sak == 0x18 ||
         sak == 0x19 || sak == 0x28 || sak == 0x38)
         ok = readMifareClassic(target, tag);
     else if (sak & 0x20)
         ok = readType4(target, tag);
     else
         ok = readType2(target, tag);
-    chip_.release();
+    chip_->release();
     if (ok && !tag.incomplete) {
         memcpy(present_, target.uid, target.uidLen);
         presentLen_ = target.uidLen;
@@ -115,16 +146,30 @@ String TagReader::scanI2C() {
     return "I2C devices at " + found + ", the PN532 is 0x24";
 }
 
-bool TagReader::reselect(const Pn532Target &target) {
-    Pn532Target again;
-    return chip_.listTarget(again) && again.sameCard(target);
+// An ISO 14443A card, or on chips that have it an ISO 15693 one; the kind
+// found last is looked for first, so a tag left on the reader is found
+// without switching the field over.
+bool TagReader::findCard(NfcTarget &target) {
+    if (!chip_->hasIso15693()) return chip_->listTarget(target);
+    bool found;
+    if (vicinityFirst_)
+        found = chip_->inventory15693(target) || chip_->listTarget(target);
+    else
+        found = chip_->listTarget(target) || chip_->inventory15693(target);
+    if (found) vicinityFirst_ = target.iso15693;
+    return found;
 }
 
-bool TagReader::readType2(const Pn532Target &target, Tag &tag) {
+bool TagReader::reselect(const NfcTarget &target) {
+    NfcTarget again;
+    return chip_->listTarget(again) && again.sameCard(target);
+}
+
+bool TagReader::readType2(const NfcTarget &target, Tag &tag) {
     tag.kind = TagKind::Type2;
     uint8_t buf[20];
     const uint8_t first[] = {MIFARE_READ, 0};
-    if (chip_.exchange(first, 2, buf, 16) < 16) return false;
+    if (chip_->exchange(first, 2, buf, 16) < 16) return false;
     tag.memory.assign(buf, buf + 16);
     int pages = TYPE2_PAGES_WITHOUT_CC;
     if (buf[12] == 0xE1 && buf[14]) pages = min(4 + buf[14] * 8 / 4, TYPE2_MAX_PAGES);
@@ -132,7 +177,7 @@ bool TagReader::readType2(const Pn532Target &target, Tag &tag) {
     int retries = 0;
     for (int page = 4; page < pages; page += 4) {
         const uint8_t cmd[] = {MIFARE_READ, (uint8_t)page};
-        if (chip_.exchange(cmd, 2, buf, 16) < 16) {
+        if (chip_->exchange(cmd, 2, buf, 16) < 16) {
             // A card that went away mid-read; a short tag just ends here.
             if (!reselect(target)) {
                 tag.incomplete = true;
@@ -156,18 +201,18 @@ bool TagReader::readType2(const Pn532Target &target, Tag &tag) {
 }
 
 // 1: opened, 0: refused (card reselected), -1: card gone.
-int TagReader::auth(const Pn532Target &target, int block, const uint8_t *key, bool keyB) {
+int TagReader::auth(const NfcTarget &target, int block, const uint8_t *key, bool keyB) {
     uint8_t cmd[12], resp[4];
     cmd[0] = keyB ? MIFARE_AUTH_B : MIFARE_AUTH_A;
     cmd[1] = block;
     memcpy(cmd + 2, key, 6);
     memcpy(cmd + 8, target.uid + target.uidLen - 4, 4);
-    if (chip_.exchange(cmd, sizeof(cmd), resp, sizeof(resp)) >= 0) return 1;
+    if (chip_->exchange(cmd, sizeof(cmd), resp, sizeof(resp)) >= 0) return 1;
     // A failed authentication halts the card.
     return reselect(target) ? 0 : -1;
 }
 
-bool TagReader::readMifareClassic(const Pn532Target &target, Tag &tag) {
+bool TagReader::readMifareClassic(const NfcTarget &target, Tag &tag) {
     tag.kind = TagKind::MifareClassic;
     size_t size = 1024;
     if (target.sak == 0x18 || target.sak == 0x38) size = 4096;
@@ -232,7 +277,7 @@ bool TagReader::readMifareClassic(const Pn532Target &target, Tag &tag) {
         bool ok = true;
         for (int block = firstBlock; block < firstBlock + count - 1; block++) {
             const uint8_t cmd[] = {MIFARE_READ, (uint8_t)block};
-            if (chip_.exchange(cmd, 2, buf, 16) < 16) {
+            if (chip_->exchange(cmd, 2, buf, 16) < 16) {
                 ok = false;
                 break;
             }
@@ -253,13 +298,13 @@ bool TagReader::readMifareClassic(const Pn532Target &target, Tag &tag) {
 }
 
 int TagReader::apdu(const uint8_t *cmd, size_t len, uint8_t *out, size_t expect) {
-    int n = chip_.exchange(cmd, len, out, expect, 2000);
+    int n = chip_->exchange(cmd, len, out, expect, 2000);
     if (n < 2 || out[n - 2] != 0x90 || out[n - 1] != 0x00) return -1;
     return n - 2;
 }
 
 // NDEF file of an NFC Forum Type 4 tag (ISO-DEP, e.g. DESFire).
-bool TagReader::readType4(const Pn532Target &target, Tag &tag) {
+bool TagReader::readType4(const NfcTarget &target, Tag &tag) {
     tag.kind = TagKind::Type4;
     uint8_t resp[TYPE4_CHUNK + 4];
     const uint8_t selectApp[] = {0x00, 0xA4, 0x04, 0x00, 0x07, 0xD2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x01, 0x00};
@@ -282,6 +327,57 @@ bool TagReader::readType4(const Pn532Target &target, Tag &tag) {
         if (n <= 0) break;
         tag.ndef.insert(tag.ndef.end(), resp, resp + n);
         offset += n;
+    }
+    return true;
+}
+
+// Every block of an ISO 15693 tag, as zmod_nfc's read_type5. Requests are
+// addressed, so the tag never needs selecting again.
+bool TagReader::readType5(const NfcTarget &target, Tag &tag) {
+    tag.kind = TagKind::Type5;
+    uint8_t request[12] = {ISO15693_ADDRESSED};
+    for (int i = 0; i < 8; i++) request[2 + i] = target.uid[7 - i];   // LSB first
+    uint8_t resp[TYPE5_READ_MAX + 8];
+
+    int blocks = TYPE5_MAX_BLOCKS, blockSize = 4;
+    request[1] = ISO15693_SYSTEM_INFO;
+    int n = chip_->exchange15693(request, 10, resp, sizeof(resp));
+    // Info flags, UID, then DSFID, AFI and memory size when flagged.
+    if (n >= 9) {
+        uint8_t info = resp[0];
+        int pos = 9 + ((info & 0x01) ? 1 : 0) + ((info & 0x02) ? 1 : 0);
+        if ((info & 0x04) && n >= pos + 2) {
+            blocks = resp[pos] + 1;
+            blockSize = (resp[pos + 1] & 0x1F) + 1;
+        }
+    }
+    tag.blockSize = blockSize;
+    tag.memory.reserve(blocks * blockSize);
+    int step = constrain(TYPE5_READ_MAX / blockSize, 1, 8);
+    for (int block = 0; block < blocks;) {
+        int count = min(step, blocks - block);
+        if (count == 1) {
+            request[1] = ISO15693_READ_SINGLE;
+            request[10] = block;
+            n = chip_->exchange15693(request, 11, resp, sizeof(resp));
+        } else {
+            request[1] = ISO15693_READ_MULTIPLE;
+            request[10] = block;
+            request[11] = count - 1;
+            n = chip_->exchange15693(request, 12, resp, sizeof(resp));
+        }
+        if (n < count * blockSize) {
+            // Reading multiple blocks is optional in ISO 15693.
+            if (count > 1) {
+                step = 1;
+                continue;
+            }
+            NfcTarget again;
+            if (!chip_->inventory15693(again) || !again.sameCard(target)) tag.incomplete = true;
+            break;
+        }
+        tag.memory.insert(tag.memory.end(), resp, resp + count * blockSize);
+        block += count;
     }
     return true;
 }

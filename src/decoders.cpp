@@ -2,6 +2,7 @@
 
 #include "keys.h"
 #include "ndef.h"
+#include "openprinttag.h"
 
 namespace {
 
@@ -132,6 +133,30 @@ Filament decodeSpoolman(const Tag &, const std::vector<NdefRecord> &records) {
     }
     if (f.spoolId || f.filamentId) f.format = "Spoolman";
     return f;
+}
+
+// --- OpenPrintTag (Prusa) --------------------------------------------------
+
+Filament decodeOpenPrintTag(const Tag &, const std::vector<NdefRecord> &records) {
+    for (auto &record : records) {
+        if (record.mime() != "application/vnd.openprinttag") continue;
+        OpenPrintTag opt;
+        if (!parseOpenPrintTag(record.payload.data(), record.payload.size(), opt)) continue;
+        Filament f;
+        f.format = "OpenPrintTag";
+        normalizeMaterial(opt.material.c_str(), f.material, f.modifiers);
+        f.brand = opt.brand.c_str();
+        f.name = opt.name.c_str();
+        f.color = opt.color;
+        f.alpha = opt.alpha;
+        f.diameter = opt.diameter;
+        f.weight = opt.weight;
+        f.nozzleMin = opt.nozzleMin;
+        f.nozzleMax = opt.nozzleMax;
+        f.bedTemp = opt.bedTemp;
+        return withDefaults(f);
+    }
+    return Filament();
 }
 
 // --- OpenSpool -------------------------------------------------------------
@@ -517,8 +542,8 @@ Filament decodeText(const Tag &, const std::vector<NdefRecord> &records) {
 }
 
 const Decoder DECODERS[] = {
-    decodeOpenSpool, decodeSpoolEase, decodeBambu, decodeCreality, decodeSnapmaker,
-    decodeAnycubic, decodeElegoo, decodeQidi, decodeText,
+    decodeOpenPrintTag, decodeOpenSpool, decodeSpoolEase, decodeBambu, decodeCreality,
+    decodeSnapmaker, decodeAnycubic, decodeElegoo, decodeQidi, decodeText,
 };
 
 }  // namespace

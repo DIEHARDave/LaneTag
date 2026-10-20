@@ -262,8 +262,12 @@ String scanBody(const Tag &tag, const String &readerName, int slot) {
     if (slot > 0) doc["slot"] = slot;
     doc["uid"] = tag.uidHex();
     doc["kind"] = tagKindName(tag.kind);
-    doc["sak"] = tag.sak;
-    doc["atqa"] = toHex(tag.atqa, 2);
+    if (tag.kind == TagKind::Type5) {
+        doc["block_size"] = tag.blockSize;
+    } else {
+        doc["sak"] = tag.sak;
+        doc["atqa"] = toHex(tag.atqa, 2);
+    }
     doc["memory"] = base64(tag.memory.data(), tag.memory.size());
     if (tag.kind == TagKind::Type4) doc["ndef"] = base64(tag.ndef.data(), tag.ndef.size());
     if (tag.kind == TagKind::MifareClassic) {
