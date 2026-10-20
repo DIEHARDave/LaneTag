@@ -28,6 +28,7 @@ struct App {
     ScanRecord last;
     bool apMode = false;
     String apName;
+    String wifiError;           // why the home network could not be joined
 
     String readerName() const;
     // A new tag was read: decode it and send it to the active printer.
@@ -42,6 +43,9 @@ private:
 };
 
 extern App app;
+
+// Set the Wi-Fi transmit power from the settings (after any WiFi.mode()).
+void applyWifiPower();
 
 void webBegin();
 void webLoop();

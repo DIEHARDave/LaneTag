@@ -83,8 +83,8 @@ void configToJson(const Config &config, JsonObject out, bool secrets) {
     out["wifi_ssid"] = config.wifiSsid;
     secret(out, "wifi_pass", config.wifiPass, secrets);
     secret(out, "ui_password", config.uiPassword, secrets);
+    out["wifi_power"] = config.wifiPower / 4.0;
     out["active"] = config.active;
-    out["auto_slot"] = config.autoSlot;
     JsonObject reader = out["reader"].to<JsonObject>();
     reader["bus"] = config.reader.bus == Pn532Bus::UART ? "uart" : "i2c";
     reader["sda"] = config.reader.sda;
@@ -102,6 +102,7 @@ void configToJson(const Config &config, JsonObject out, bool secrets) {
         o["model"] = modelName(p.model);
         o["method"] = methodName(p.method);
         o["port"] = p.port;
+        o["slot"] = p.slot;
         o["serial"] = p.serial;
         secret(o, "check_code", p.checkCode, secrets);
         secret(o, "api_key", p.apiKey, secrets);
@@ -121,7 +122,11 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
     if (in["wifi_ssid"].is<const char *>()) next.wifiSsid = in["wifi_ssid"].as<const char *>();
     readSecret(in, "wifi_pass", next.wifiPass);
     readSecret(in, "ui_password", next.uiPassword);
-    if (!in["auto_slot"].isNull()) next.autoSlot = constrain(in["auto_slot"].as<int>(), 0, 16);
+    if (!in["wifi_power"].isNull()) {
+        int quarter = (int)(in["wifi_power"].as<float>() * 4 + 0.5f);
+        if (quarter != 0 && (quarter < 8 || quarter > 78)) return "Wi-Fi power must be 2 to 19.5 dBm";
+        next.wifiPower = quarter;
+    }
     JsonObjectConst reader = in["reader"];
     if (!reader.isNull()) {
         String bus = reader["bus"] | "i2c";
@@ -154,6 +159,9 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
             p.model = model == "creator5" ? Model::Creator5 : Model::AD5X;
             p.method = method == "stock" ? Method::Stock : method == "zmod_basic" ? Method::ZmodBasic : Method::ZmodNfc;
             p.port = constrain(o["port"] | 0, 0, 65535);
+            // Settings saved before the fixed slot moved into each printer
+            // had one auto_slot for all printers.
+            p.slot = constrain(o["slot"] | (in["auto_slot"] | 0), 0, 16);
             p.serial = o["serial"] | "";
             p.serial.trim();
             readSecret(o, "check_code", p.checkCode);

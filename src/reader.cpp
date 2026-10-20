@@ -11,6 +11,8 @@ constexpr uint8_t MIFARE_AUTH_B = 0x61;
 
 constexpr int TYPE2_PAGES_WITHOUT_CC = 45;
 constexpr int TYPE2_MAX_PAGES = 231;           // NTAG216
+// Failed page reads per tag that are tried again before the read ends.
+constexpr int TYPE2_RETRIES = 3;
 // Polls in a row that must miss a card before it counts as removed.
 constexpr int REMOVAL_MISSES = 2;
 constexpr uint32_t REINIT_INTERVAL = 5000;
@@ -51,7 +53,11 @@ bool TagReader::poll(Tag &tag) {
         if ((int32_t)(millis() - nextInit_) < 0) return false;
         nextInit_ = millis() + REINIT_INTERVAL;
         if (!chip_.init()) {
-            error_ = String("no PN532 answering on ") + chip_.busName() + "; check the wiring and the mode switches";
+            String error = String("no PN532 answering on ") + chip_.busName();
+            if (pins_.bus == Pn532Bus::I2C) error += " (" + scanI2C() + ")";
+            error += "; check the wiring and the mode switches";
+            if (error != error_) log_w("%s", error.c_str());
+            error_ = error;
             return false;
         }
         error_ = "";
@@ -96,6 +102,19 @@ bool TagReader::poll(Tag &tag) {
     return ok;
 }
 
+String TagReader::scanI2C() {
+    String found;
+    for (uint8_t address = 0x08; address < 0x78; address++) {
+        Wire.beginTransmission(address);
+        if (Wire.endTransmission() != 0) continue;
+        char text[8];
+        snprintf(text, sizeof(text), "0x%02X", address);
+        found += (found.length() ? ", " : "") + String(text);
+    }
+    if (!found.length()) return "nothing answers on SDA " + String(pins_.sda) + " / SCL " + String(pins_.scl);
+    return "I2C devices at " + found + ", the PN532 is 0x24";
+}
+
 bool TagReader::reselect(const Pn532Target &target) {
     Pn532Target again;
     return chip_.listTarget(again) && again.sameCard(target);
@@ -110,12 +129,19 @@ bool TagReader::readType2(const Pn532Target &target, Tag &tag) {
     int pages = TYPE2_PAGES_WITHOUT_CC;
     if (buf[12] == 0xE1 && buf[14]) pages = min(4 + buf[14] * 8 / 4, TYPE2_MAX_PAGES);
     tag.memory.reserve(pages * 4 + 16);
+    int retries = 0;
     for (int page = 4; page < pages; page += 4) {
         const uint8_t cmd[] = {MIFARE_READ, (uint8_t)page};
         if (chip_.exchange(cmd, 2, buf, 16) < 16) {
             // A card that went away mid-read; a short tag just ends here.
-            if (!reselect(target)) tag.incomplete = true;
-            break;
+            if (!reselect(target)) {
+                tag.incomplete = true;
+                break;
+            }
+            // Still there: a one-off transfer error, so read the page again.
+            if (++retries > TYPE2_RETRIES) break;
+            page -= 4;
+            continue;
         }
         // MIFARE Ultralight wraps around past its last page.
         if (page >= 16 && memcmp(buf, tag.memory.data(), 16) == 0) break;

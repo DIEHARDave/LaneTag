@@ -22,15 +22,16 @@ printers and their IP addresses, and how each printer is reached.
       printer, lane_data
 ```
 
-> **Status: first version, not yet run on hardware.** The firmware builds
-> for ESP32, ESP32-S3 and ESP32-C3 without warnings. Its tag decoders and
-> MIFARE key derivation were checked against
-> [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc)'s (which are tested on
-> real tags): identical results for every tag in zmod_nfc's decoder tests and
-> identical Bambu, Creality and Snapmaker keys. The zmod_nfc side of the
-> network protocol has unit tests. Reading tags with a PN532 on an ESP32,
-> and the three printer methods against real printers, are still to be
-> tried. Reports are welcome.
+> **Status: early release.** Tested on an **ESP32-C3 SuperMini** with a
+> **PN532 over I2C** and a **Creator 5** running Zmod and zmod_nfc: an
+> OpenSpool NTAG read, sent through Moonraker, and assigned both from the
+> printer's prompt and with the reader fixed to one toolhead. The firmware
+> builds for ESP32, ESP32-S3 and ESP32-C3 without warnings. Its decoders and
+> MIFARE key derivation match [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc)'s
+> (identical results for every tag in zmod_nfc's decoder tests, identical
+> Bambu, Creality and Snapmaker keys). Not yet tried: MIFARE Classic tags
+> (Bambu, Creality, Snapmaker) on the PN532, HSU wiring, the AD5X, and the
+> **Zmod basic** and **stock firmware** methods. Reports are welcome.
 
 ## Printer methods
 
@@ -43,7 +44,8 @@ Each printer on the reader's list uses one of three methods:
 | **Stock firmware** | Flashforge firmware | Material and colour through the printer's local API (`msConfig_cmd` on port 8898) - that is all the stock API offers. Needs the printer's **serial number** and **check code**. On the Creator 5, the colour is snapped to its 24-colour palette and the material to its list, as its firmware shows nothing else. |
 
 With Zmod basic and stock, pick the slot on the reader's web page after a
-scan, or set a fixed slot under **Settings > Scanning**.
+scan. With any method, a reader can also be fixed to one slot; see
+[One reader per slot](#one-reader-per-slot).
 
 ## Hardware
 
@@ -53,6 +55,10 @@ scan, or set a fixed slot under **Settings > Scanning**.
   or Elechouse's. The PN532 reads ISO 14443A tags: NTAG21x, MIFARE
   Ultralight, MIFARE Classic and Type 4. It cannot read ISO 15693 tags
   (OpenPrintTag); zmod_nfc with an ACR1552U can.
+* ESP32-C3 SuperMini boards have a weak antenna. If the reader drops off
+  your network, change **Settings > Wi-Fi transmit power**: the usual advice
+  of 8.5 dBm lost most packets on the tested board, which worked well from
+  11 dBm up (15 dBm is the C3 default).
 * Optional: an LED and an **active** buzzer. The board's own LED is used by
   default (GPIO 2 on ESP32 DevKits, GPIO 8 on the C3 SuperMini).
 
@@ -136,8 +142,19 @@ the printer did, plus the target printer's slots.
   in, just like with a USB reader. Tap a slot there, insert the filament
   into an empty slot, or click a slot on the reader's page. **Send to
   printer again** reopens the popup.
-* **Zmod basic / stock:** click the slot on the page. With a fixed slot set
-  under **Settings > Scanning**, the scan goes straight to that slot.
+* **Zmod basic / stock:** click the slot on the page.
+
+### One reader per slot
+
+Each printer entry has a **Slot for this reader** setting. Set it, and every
+scan on this reader goes straight into that slot (or toolhead on the
+Creator 5) with no question asked. Mount one reader at each IFS slot, set
+each to its own slot, and a spool is assigned just by setting it on its
+slot's reader.
+
+With zmod_nfc, everything else still happens: the Spoolman lookup, lane
+data, and Zmod's colour popup is skipped when you then insert the filament.
+A reader can have a fixed slot on one printer and ask on another.
 
 The LED (and buzzer) signal: a short blink when a tag is read, a long one
 when the printer took it, three short ones on an error.

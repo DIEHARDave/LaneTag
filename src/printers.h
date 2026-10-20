@@ -29,8 +29,9 @@ struct SlotList {
     std::vector<SlotInfo> slots;
 };
 
-// zmod_nfc: hand the raw read to the plugin, which prompts on the printer.
-PrinterReply sendScan(const PrinterConfig &printer, const Tag &tag, const String &readerName);
+// zmod_nfc: hand the raw read to the plugin, which prompts on the printer,
+// or with slot > 0 assigns it to that slot straight away.
+PrinterReply sendScan(const PrinterConfig &printer, const Tag &tag, const String &readerName, int slot = 0);
 // Put the scanned spool into a slot (1-based).
 PrinterReply assignSlot(const PrinterConfig &printer, const Tag &tag, const Filament &filament,
                         int slot, const String &readerName);

@@ -213,9 +213,10 @@ String moonrakerFailure(const HttpResult &result, const JsonDocument &doc) {
 
 const char *const NO_ZMOD_NFC = "zmod_nfc is not installed on the printer, or too old for network readers";
 
-String scanBody(const Tag &tag, const String &readerName) {
+String scanBody(const Tag &tag, const String &readerName, int slot) {
     JsonDocument doc;
     doc["reader"] = readerName;
+    if (slot > 0) doc["slot"] = slot;
     doc["uid"] = tag.uidHex();
     doc["kind"] = tagKindName(tag.kind);
     doc["sak"] = tag.sak;
@@ -242,7 +243,9 @@ void describeOutcome(PrinterReply &reply, JsonObjectConst remote) {
     if (reply.outcome == "prompt")
         reply.message = "Pick the slot on the printer's screen (or below)";
     else if (reply.outcome == "assigned")
-        reply.message = "Assigned to the printer's only slot";
+        reply.message = remote["message"] | "Assigned to the printer's only slot";
+    else if (reply.outcome == "no_slot")
+        reply.ok = false, reply.message = remote["message"] | "The printer has no such slot";
     else if (reply.outcome == "disabled")
         reply.ok = false, reply.message = "zmod_nfc is disabled on the printer (NFC_ENABLE turns it on)";
     else if (reply.outcome == "printing")
@@ -258,9 +261,9 @@ void describeOutcome(PrinterReply &reply, JsonObjectConst remote) {
     if (spoolman.length() && reply.ok) reply.message += " (Spoolman: " + spoolman + ")";
 }
 
-PrinterReply zmodNfcScan(const PrinterConfig &printer, const Tag &tag, const String &readerName) {
+PrinterReply zmodNfcScan(const PrinterConfig &printer, const Tag &tag, const String &readerName, int slot) {
     PrinterReply reply;
-    HttpResult result = moonraker(printer, "/printer/zmod_nfc/scan", "POST", scanBody(tag, readerName));
+    HttpResult result = moonraker(printer, "/printer/zmod_nfc/scan", "POST", scanBody(tag, readerName, slot));
     JsonDocument doc;
     deserializeJson(doc, result.body);
     if (!result.ok()) {
@@ -307,7 +310,7 @@ PrinterReply zmodNfcAssign(const PrinterConfig &printer, const Tag &tag, int slo
         reply.message = moonrakerFailure(result, doc);
         // The printer's prompt timed out or was dismissed: send the tag again.
         if (attempt == 0 && reply.message.indexOf("no scanned tag") >= 0) {
-            PrinterReply scan = zmodNfcScan(printer, tag, readerName);
+            PrinterReply scan = zmodNfcScan(printer, tag, readerName, 0);
             if (scan.ok && scan.outcome == "prompt") continue;
             return scan;
         }
@@ -564,8 +567,8 @@ PrinterReply stockAssign(const PrinterConfig &printer, const Filament &f, int sl
 
 }  // namespace
 
-PrinterReply sendScan(const PrinterConfig &printer, const Tag &tag, const String &readerName) {
-    if (printer.method == Method::ZmodNfc) return zmodNfcScan(printer, tag, readerName);
+PrinterReply sendScan(const PrinterConfig &printer, const Tag &tag, const String &readerName, int slot) {
+    if (printer.method == Method::ZmodNfc) return zmodNfcScan(printer, tag, readerName, slot);
     PrinterReply reply;
     reply.message = "only the zmod_nfc method takes whole scans";
     return reply;

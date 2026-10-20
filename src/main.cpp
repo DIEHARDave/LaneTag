@@ -29,6 +29,16 @@ constexpr uint32_t SLOT_WAIT = 10 * 60 * 1000;
 constexpr uint32_t WIFI_RETRY = 2 * 60 * 1000;
 uint32_t lastWifiTry = 0;
 
+void setWifiPower() { applyWifiPower(); }
+
+String wifiFailure() {
+    switch (WiFi.status()) {
+    case WL_NO_SSID_AVAIL: return "network not found (the ESP32 only sees 2.4 GHz networks)";
+    case WL_CONNECT_FAILED: return "connection refused (wrong password?)";
+    default: return "no answer from the network (wrong password, or too far away?)";
+    }
+}
+
 void startAccessPoint() {
     uint64_t mac = ESP.getEfuseMac();
     char name[32];
@@ -36,6 +46,7 @@ void startAccessPoint() {
              (unsigned)(mac >> 40) & 0xFF);
     app.apName = name;
     WiFi.mode(app.config.wifiSsid.length() ? WIFI_AP_STA : WIFI_AP);
+    setWifiPower();
     WiFi.softAP(name, "zmodnfc1");
     if (app.config.wifiSsid.length()) {
         WiFi.setAutoReconnect(false);
@@ -55,6 +66,7 @@ void startWifi() {
         return;
     }
     WiFi.mode(WIFI_STA);
+    setWifiPower();
     WiFi.setAutoReconnect(true);
     WiFi.begin(app.config.wifiSsid.c_str(), app.config.wifiPass.c_str());
     uint32_t start = millis();
@@ -68,11 +80,33 @@ void startWifi() {
     } else {
         // Keep trying the network in the background, with the setup
         // access point open to fix the settings.
+        app.wifiError = wifiFailure();
+        log_w("Wi-Fi %s: %s", app.config.wifiSsid.c_str(), app.wifiError.c_str());
         startAccessPoint();
     }
 }
 
 }  // namespace
+
+// Quarter dBm: WIFI_POWER_15dBm.
+#ifndef C3_DEFAULT_WIFI_POWER
+#define C3_DEFAULT_WIFI_POWER 60
+#endif
+
+// Call after every WiFi.mode() change, which resets the transmit power.
+void applyWifiPower() {
+    if (app.config.wifiPower) {
+        WiFi.setTxPower((wifi_power_t)app.config.wifiPower);
+        return;
+    }
+#if CONFIG_IDF_TARGET_ESP32C3
+    // C3 SuperMini boards have a poor antenna match, and the power that
+    // works differs between boards: 8.5 dBm (the usual advice) lost 80% of
+    // packets on one, which worked without loss from 11 to 19.5 dBm. Other
+    // values: Settings > Wi-Fi transmit power.
+    WiFi.setTxPower((wifi_power_t)C3_DEFAULT_WIFI_POWER);
+#endif
+}
 
 String App::readerName() const { return "zmod_esp32-nfc " + config.hostname; }
 
@@ -107,8 +141,9 @@ void App::handleTag(const Tag &tag) {
     }
     last.printer = config.active;
     if (printer->method == Method::ZmodNfc) {
-        // The printer decodes the raw read itself; no need to know the format here.
-        PrinterReply reply = sendScan(*printer, tag, readerName());
+        // The printer decodes the raw read itself; no need to know the format
+        // here. A reader fixed to a slot skips the printer's prompt.
+        PrinterReply reply = sendScan(*printer, tag, readerName(), printer->slot);
         last.waiting = reply.ok && reply.outcome == "prompt";
         record(reply);
         return;
@@ -121,8 +156,8 @@ void App::handleTag(const Tag &tag) {
         feedback.play(Signal::Failure);
         return;
     }
-    if (config.autoSlot > 0) {
-        record(assignSlot(*printer, tag, last.filament, config.autoSlot, readerName()));
+    if (printer->slot > 0) {
+        record(assignSlot(*printer, tag, last.filament, printer->slot, readerName()));
         return;
     }
     last.waiting = true;
@@ -164,7 +199,7 @@ PrinterReply App::resendLast(int index) {
         reply.message = "Nothing to send";
         return reply;
     }
-    reply = sendScan(config.printers[index], last.tag, readerName());
+    reply = sendScan(config.printers[index], last.tag, readerName(), config.printers[index].slot);
     last.printer = index;
     last.waiting = reply.ok && reply.outcome == "prompt";
     record(reply);
@@ -174,7 +209,8 @@ PrinterReply App::resendLast(int index) {
 void setup() {
     Serial.begin(115200);
     delay(200);
-    log_i("zmod_esp32-nfc %s", FIRMWARE_VERSION);
+    // 1 power-on, 3 software restart, 4 crash, 5-7 watchdog, 9 brownout.
+    log_i("zmod_esp32-nfc %s, reset reason %d", FIRMWARE_VERSION, (int)esp_reset_reason());
     loadConfig(app.config);
     app.feedback.begin(app.config.ledPin, app.config.ledActiveLow, app.config.buzzerPin);
     app.reader.begin(app.config.reader);
@@ -193,9 +229,11 @@ void loop() {
             log_i("Wi-Fi %s, IP %s", app.config.wifiSsid.c_str(), WiFi.localIP().toString().c_str());
             WiFi.softAPdisconnect(true);
             WiFi.mode(WIFI_STA);
+            setWifiPower();
             WiFi.setAutoReconnect(true);
             WiFi.setSleep(false);
             app.apMode = false;
+            app.wifiError = "";
             app.feedback.setIdleBlink(false);
         } else if (millis() - lastWifiTry > WIFI_RETRY && WiFi.softAPgetStationNum() == 0) {
             lastWifiTry = millis();

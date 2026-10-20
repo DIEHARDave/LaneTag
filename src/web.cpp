@@ -75,16 +75,17 @@ void handleStatus() {
     doc["version"] = FIRMWARE_VERSION;
     doc["ap"] = app.apMode;
     if (app.apMode) doc["ap_name"] = app.apName;
+    if (app.wifiError.length()) doc["wifi_error"] = app.wifiError;
     doc["wifi"] = WiFi.status() == WL_CONNECTED;
     doc["ssid"] = app.config.wifiSsid;
     doc["ip"] = WiFi.localIP().toString();
     doc["rssi"] = WiFi.RSSI();
+    doc["tx_power"] = WiFi.getTxPower() / 4.0;
     JsonObject reader = doc["reader"].to<JsonObject>();
     reader["ok"] = app.reader.connected();
     reader["name"] = app.reader.describe();
     reader["error"] = app.reader.error();
     doc["active"] = app.config.active;
-    doc["auto_slot"] = app.config.autoSlot;
     JsonArray printers = doc["printers"].to<JsonArray>();
     for (auto &p : app.config.printers) {
         JsonObject o = printers.add<JsonObject>();
@@ -92,6 +93,7 @@ void handleStatus() {
         o["host"] = p.host;
         o["method"] = methodName(p.method);
         o["model"] = modelName(p.model);
+        o["slot"] = p.slot;
     }
     const ScanRecord &last = app.last;
     if (last.id) {
@@ -129,7 +131,10 @@ void handleSetConfig() {
         sendError(400, error);
         return;
     }
+    // "Save and join": restart into the home network even when nothing changed.
+    if (doc["join"] | false) restart = true;
     saveConfig(app.config);
+    applyWifiPower();          // takes effect at once
     JsonDocument reply;
     reply["ok"] = true;
     reply["restart"] = restart;

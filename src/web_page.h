@@ -112,14 +112,11 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
       <div><label for="wifiPass">Wi-Fi password</label><input id="wifiPass" type="password" autocomplete="new-password"></div>
       <div><label for="hostname">Device name (name.local)</label><input id="hostname"></div>
       <div><label for="uiPassword">Page password (user admin)</label><input id="uiPassword" type="password" autocomplete="new-password"></div>
+      <div><label for="wifiPower">Wi-Fi transmit power</label><select id="wifiPower"><option value="0">Default</option><option value="19.5">19.5 dBm</option><option value="17">17 dBm</option><option value="15">15 dBm</option><option value="13">13 dBm</option><option value="11">11 dBm</option><option value="8.5">8.5 dBm</option><option value="7">7 dBm</option><option value="5">5 dBm</option></select></div>
     </div>
-    <div class="actions"><button class="btn" id="scanWifi">Find networks</button></div>
-  </div>
-  <div class="card">
-    <h2>Scanning</h2>
-    <label for="autoSlot">Zmod basic and stock: send to slot</label>
-    <select id="autoSlot"><option value="0">Ask on this page</option><option value="1">Slot 1</option><option value="2">Slot 2</option><option value="3">Slot 3</option><option value="4">Slot 4</option></select>
-    <div class="hint">zmod_nfc printers always ask on their own screen; you can also pick the slot on this page.</div>
+    <div class="hint">If the reader drops off the network (common on ESP32-C3 SuperMini boards), try other transmit powers; the change applies at once.</div>
+    <div class="actions"><button class="btn" id="scanWifi">Find networks</button><button class="btn primary" id="joinWifi">Save and join</button></div>
+    <div class="msg" id="wifiMsg"></div>
   </div>
   <div class="card">
     <h2>PN532 reader</h2>
@@ -177,7 +174,8 @@ function renderHeader() {
   $("device").textContent = status.device;
   document.title = status.device;
   const w = $("wifiPill");
-  w.textContent = status.wifi ? `Wi-Fi ${status.ssid} · ${status.ip}` : status.ap ? "Setup access point" : "No Wi-Fi";
+  w.textContent = status.wifi ? `Wi-Fi ${status.ssid} · ${status.ip} · ${status.rssi} dBm` : status.ap ? "Setup access point" : "No Wi-Fi";
+  w.title = status.wifi ? `transmit power ${status.tx_power} dBm` : "";
   w.className = "pill " + (status.wifi ? "ok" : "bad");
   const r = $("readerPill");
   r.textContent = status.reader.name;
@@ -185,7 +183,8 @@ function renderHeader() {
   r.className = "pill " + (status.reader.ok ? "ok" : "bad");
   const ap = $("apBanner");
   ap.classList.toggle("hidden", !status.ap);
-  if (status.ap) ap.textContent = `Setup mode: this device is the "${status.ap_name}" Wi-Fi network (password zmodnfc1). Enter your Wi-Fi network under Settings.`;
+  if (status.ap) ap.textContent = `Setup mode: this device is the "${status.ap_name}" Wi-Fi network (password zmodnfc1). Enter your Wi-Fi network under Settings.` +
+    (status.wifi_error ? ` Could not join ${status.ssid}: ${status.wifi_error}.` : "");
   $("version").textContent = "Version " + status.version;
 }
 
@@ -197,8 +196,9 @@ function renderTarget() {
   if (document.activeElement !== sel) sel.value = status.active;
   const p = status.printers[status.active];
   $("targetHint").textContent = !p ? "Add a printer on the Printers tab." :
+    p.slot ? `This reader is fixed to ${slotName(p, p.slot)}: scans go straight into it.` :
     p.method === "zmod_nfc" ? "Scans go straight to the printer, which asks for the slot on its screen." :
-    status.auto_slot ? `Scans go to slot ${status.auto_slot} right away.` : "After a scan, pick the slot below.";
+    "After a scan, pick the slot below.";
 }
 
 function renderScan() {
@@ -289,6 +289,16 @@ $("cancel").onclick = async () => { await api("/api/cancel", {printer: status.ac
 $("rescan").onclick = () => api("/api/rescan", {});
 
 // --- Printers ---------------------------------------------------------------
+function slotName(p, n) {
+  return p.model === "creator5" ? `toolhead T${n - 1}` : `slot ${n}`;
+}
+
+function slotOptions(p) {
+  let html = `<option value="0" ${p.slot ? "" : "selected"}>Ask when scanned</option>`;
+  for (let n = 1; n <= 4; n++) html += `<option value="${n}" ${p.slot === n ? "selected" : ""}>Always ${slotName(p, n)}</option>`;
+  return html;
+}
+
 function printerCard(p, i) {
   const ph = p.method === "stock" ? 8898 : 7125;
   return `<div class="printer" data-i="${i}">
@@ -298,6 +308,7 @@ function printerCard(p, i) {
     <div><label>Printer</label><select data-k="model">${Object.entries(MODELS).map(([k, v]) => `<option value="${k}" ${p.model === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
     <div><label>Method</label><select data-k="method">${Object.entries(METHODS).map(([k, v]) => `<option value="${k}" ${p.method === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
     <div><label>Port</label><input data-k="port" type="number" value="${p.port || ""}" placeholder="${ph}"></div>
+    <div><label>Slot for this reader</label><select data-k="slot">${slotOptions(p)}</select></div>
     <div class="m-stock"><label>Serial number</label><input data-k="serial" value="${esc(p.serial)}"></div>
     <div class="m-stock"><label>Check code</label><input data-k="check_code" type="password" autocomplete="new-password" placeholder="${p.check_code_set ? "unchanged" : ""}"></div>
     <div class="m-zmod"><label>Moonraker API key (if needed)</label><input data-k="api_key" type="password" autocomplete="new-password" placeholder="${p.api_key_set ? "unchanged" : "none"}"></div>
@@ -336,7 +347,7 @@ function collectPrinters() {
     card.querySelectorAll("[data-k]").forEach(e => {
       const k = e.dataset.k;
       if (k === "check_code" || k === "api_key") { if (e.value) p[k] = e.value; else delete p[k]; }
-      else if (k === "port") p.port = +e.value || 0;
+      else if (k === "port" || k === "slot") p[k] = +e.value || 0;
       else p[k] = e.value.trim();
     });
   });
@@ -350,7 +361,7 @@ $("addPrinter").onclick = () => {
 $("savePrinters").onclick = async () => {
   collectPrinters();
   const r = await api("/api/config", {printers: config.printers.map(p => {
-    const o = {keep: p.keep ?? -1, name: p.name, host: p.host, model: p.model, method: p.method, port: p.port, serial: p.serial};
+    const o = {keep: p.keep ?? -1, name: p.name, host: p.host, model: p.model, method: p.method, port: p.port, slot: p.slot || 0, serial: p.serial};
     if (p.check_code) o.check_code = p.check_code;
     if (p.api_key) o.api_key = p.api_key;
     return o;
@@ -372,7 +383,7 @@ function renderSettings() {
   $("wifiPass").placeholder = config.wifi_pass_set ? "unchanged" : "";
   $("hostname").value = config.hostname;
   $("uiPassword").placeholder = config.ui_password_set ? "unchanged" : "none";
-  $("autoSlot").value = config.auto_slot;
+  $("wifiPower").value = String(config.wifi_power || 0);
   $("bus").value = config.reader.bus;
   for (const k of ["sda", "scl", "rx", "tx"]) $(k).value = config.reader[k];
   $("ledPin").value = config.led_pin;
@@ -381,22 +392,24 @@ function renderSettings() {
   showBus();
 }
 
-$("autoSlot").onchange = async () => {
-  const r = await api("/api/config", {auto_slot: +$("autoSlot").value});
-  setStatus($("settingsMsg"), r.ok ? "Saved" : r.error, r.ok);
-  refresh();
+$("wifiPower").onchange = async () => {
+  const r = await api("/api/config", {wifi_power: +$("wifiPower").value});
+  setStatus($("wifiMsg"), r.ok ? "Transmit power set" : r.error, r.ok);
 };
-$("saveSettings").onclick = async () => {
+async function saveSettings(msg, join) {
   const body = {
-    wifi_ssid: $("ssid").value.trim(), hostname: $("hostname").value.trim(), auto_slot: +$("autoSlot").value,
+    wifi_ssid: $("ssid").value.trim(), hostname: $("hostname").value.trim(),
     reader: {bus: $("bus").value, sda: +$("sda").value, scl: +$("scl").value, rx: +$("rx").value, tx: +$("tx").value},
     led_pin: +$("ledPin").value, led_active_low: $("ledLow").value === "1", buzzer_pin: +$("buzzerPin").value,
   };
   if ($("wifiPass").value) body.wifi_pass = $("wifiPass").value;
+  if (join) body.join = true;
   if ($("uiPassword").value) body.ui_password = $("uiPassword").value;
   const r = await api("/api/config", body);
-  setStatus($("settingsMsg"), r.ok ? (r.restart ? "Saved; restarting. Reconnect to " + body.hostname + ".local or the new IP address." : "Saved") : r.error, r.ok);
-};
+  setStatus(msg, r.ok ? (r.restart ? "Saved; restarting to join " + body.wifi_ssid + ". Reconnect to " + body.hostname + ".local or the new IP address. If it cannot join, the setup network comes back in about 20 seconds." : "Saved") : r.error, r.ok);
+}
+$("saveSettings").onclick = () => saveSettings($("settingsMsg"));
+$("joinWifi").onclick = () => saveSettings($("wifiMsg"), true);
 $("scanWifi").onclick = async () => {
   $("scanWifi").textContent = "Searching…";
   const r = await api("/api/networks");

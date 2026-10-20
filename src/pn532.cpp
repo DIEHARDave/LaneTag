@@ -4,6 +4,7 @@ namespace {
 
 constexpr uint8_t I2C_ADDRESS = 0x24;
 constexpr size_t I2C_MAX_READ = 128;     // the Arduino Wire buffer
+constexpr uint8_t I2C_BUS = 0;           // the bus behind Wire
 
 constexpr uint8_t CMD_GET_FIRMWARE_VERSION = 0x02;
 constexpr uint8_t CMD_SAM_CONFIGURATION = 0x14;
@@ -88,16 +89,18 @@ bool Pn532::writeFrame(const uint8_t *data, size_t len, bool wake) {
 }
 
 // I2C: wait until the PN532's status byte says ready, then read a frame in
-// one transfer (the first byte is the status byte again).
+// one transfer (the first byte is the status byte again). A busy PN532
+// NAKs its address; that only means "not yet", so the reads go through the
+// HAL, which (unlike Wire::requestFrom) does not log every NAK as an error.
 bool Pn532::i2cFill(size_t len, uint32_t deadline) {
     len = min(len + 1, I2C_MAX_READ);
+    uint8_t buf[I2C_MAX_READ];
     while ((int32_t)(millis() - deadline) < 0) {
-        if (wire_->requestFrom(I2C_ADDRESS, (size_t)1) == 1 && (wire_->read() & 0x01)) {
-            size_t got = wire_->requestFrom(I2C_ADDRESS, len);
-            if (got < 2) return false;
-            wire_->read();                          // status byte
-            rxLen_ = 0;
-            while (wire_->available() && rxLen_ < sizeof(rx_)) rx_[rxLen_++] = wire_->read();
+        size_t got = 0;
+        if (i2cRead(I2C_BUS, I2C_ADDRESS, buf, 1, 20, &got) == ESP_OK && got == 1 && (buf[0] & 0x01) &&
+            i2cRead(I2C_BUS, I2C_ADDRESS, buf, len, 50, &got) == ESP_OK && got >= 2 && (buf[0] & 0x01)) {
+            rxLen_ = min(got - 1, sizeof(rx_));
+            memcpy(rx_, buf + 1, rxLen_);
             return true;
         }
         delay(1);

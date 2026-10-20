@@ -29,6 +29,8 @@ private:
     bool readMifareClassic(const Pn532Target &target, Tag &tag);
     bool readType4(const Pn532Target &target, Tag &tag);
     bool reselect(const Pn532Target &target);
+    // The addresses that answer on the I2C bus, for the "not found" error.
+    String scanI2C();
     int auth(const Pn532Target &target, int block, const uint8_t *key, bool keyB);
     int apdu(const uint8_t *cmd, size_t len, uint8_t *out, size_t expect);
 

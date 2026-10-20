@@ -34,6 +34,9 @@ struct PrinterConfig {
     String checkCode;           // stock: the printer's check code
     String apiKey;              // Zmod methods: Moonraker API key, when the reader
                                 // is not in Moonraker's trusted_clients
+    // A reader fixed to one slot (one reader per IFS slot or toolhead):
+    // scans go straight into this slot, with no prompt. 0: ask.
+    int slot = 0;
 
     uint16_t effectivePort() const;
     String baseUrl() const;
@@ -44,11 +47,11 @@ struct Config {
     String wifiSsid;
     String wifiPass;
     String uiPassword;          // empty: the web page is open
+    // Wi-Fi transmit power in quarter dBm (the wifi_power_t values: 34 is
+    // 8.5 dBm, 78 is 19.5 dBm); 0: the chip's default (15 dBm on the C3).
+    int wifiPower = 0;
     std::vector<PrinterConfig> printers;
     int active = 0;             // printer scans go to
-    // Basic and stock methods: send to this slot right after a scan; 0 asks
-    // on the web page.
-    int autoSlot = 0;
     ReaderPins reader;
     int ledPin = -1;
     bool ledActiveLow = false;
