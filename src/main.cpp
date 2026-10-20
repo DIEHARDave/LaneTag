@@ -8,7 +8,7 @@
 //               Moonraker's lane_data
 //   stock       material and colour go to the stock firmware's local API
 // For zmod_basic and stock the slot is picked on the web page, or set once
-// as the automatic slot.
+// as the automatic slot. The board's button steps that slot (see buttonLoop).
 #include <Arduino.h>
 #include <ESPmDNS.h>
 #include <WiFi.h>
@@ -28,6 +28,48 @@ constexpr uint32_t SLOT_WAIT = 10 * 60 * 1000;
 // only while nobody uses the access point (retries disturb it).
 constexpr uint32_t WIFI_RETRY = 2 * 60 * 1000;
 uint32_t lastWifiTry = 0;
+
+// The button steps the active printer's slot: ask, 1 ... SLOT_COUNT, ask.
+// A first press only shows the slot on the LED (one blink per slot number,
+// one long blink for ask); each press within STEP_WINDOW of the last moves
+// to the next slot. The choice is saved once the button has rested.
+constexpr uint32_t DEBOUNCE = 30;
+constexpr uint32_t STEP_WINDOW = 5000;
+
+void buttonPressed(bool step) {
+    if (app.config.active < 0 || app.config.active >= (int)app.config.printers.size()) {
+        app.feedback.play(Signal::Failure);
+        return;
+    }
+    PrinterConfig &printer = app.config.printers[app.config.active];
+    if (step) {
+        printer.slot = (printer.slot + 1) % (SLOT_COUNT + 1);
+        log_i("button: %s slot %d", printer.name.c_str(), printer.slot);
+    }
+    app.feedback.count(printer.slot);
+}
+
+void buttonLoop() {
+    static bool down = false, unsaved = false;
+    static uint32_t changedAt = 0, lastPress = 0;
+    if (app.config.buttonPin < 0) return;
+    uint32_t now = millis();
+    bool pressed = digitalRead(app.config.buttonPin) == LOW;
+    if (pressed != down && now - changedAt > DEBOUNCE) {
+        down = pressed;
+        changedAt = now;
+        if (pressed) {
+            bool step = lastPress && now - lastPress < STEP_WINDOW;
+            buttonPressed(step);
+            unsaved |= step;
+            lastPress = now;
+        }
+    }
+    if (unsaved && now - lastPress > STEP_WINDOW) {
+        saveConfig(app.config);
+        unsaved = false;
+    }
+}
 
 void setWifiPower() { applyWifiPower(); }
 
@@ -213,6 +255,7 @@ void setup() {
     log_i("zmod_esp32-nfc %s, reset reason %d", FIRMWARE_VERSION, (int)esp_reset_reason());
     loadConfig(app.config);
     app.feedback.begin(app.config.ledPin, app.config.ledActiveLow, app.config.buzzerPin);
+    if (app.config.buttonPin >= 0) pinMode(app.config.buttonPin, INPUT_PULLUP);
     app.reader.begin(app.config.reader);
     startWifi();
     if (MDNS.begin(app.config.hostname.c_str())) MDNS.addService("http", "tcp", 80);
@@ -223,6 +266,7 @@ void loop() {
     static uint32_t lastPoll = 0;
     webLoop();
     app.feedback.loop();
+    buttonLoop();
     if (app.apMode && app.config.wifiSsid.length()) {
         if (WiFi.status() == WL_CONNECTED) {
             // Back on the home network: close the setup access point.

@@ -37,6 +37,9 @@ section{display:none}section.on{display:block}
 .slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:12px}
 .slot{display:flex;gap:8px;align-items:center;text-align:left;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:8px;padding:8px;font:inherit;cursor:pointer}
 .slot:disabled{opacity:.55;cursor:default}
+.slot.next{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent);opacity:1}
+.slot.next span em{color:var(--accent);font-style:normal;font-weight:600}
+.slot i.q{display:flex;align-items:center;justify-content:center;font-style:normal;font-weight:600;font-size:13px;color:var(--muted);background:var(--chip)}
 .slot i{width:22px;height:22px;border-radius:50%;border:1px solid var(--line);flex:none}
 .slot b{display:block;font-size:14px}.slot span{font-size:12px;color:var(--muted)}
 button.btn{border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:8px;padding:7px 14px;font:inherit;cursor:pointer}
@@ -136,6 +139,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
       <div><label for="ledPin">LED pin (-1: none)</label><input id="ledPin" type="number"></div>
       <div><label for="ledLow">LED lights when</label><select id="ledLow"><option value="0">high</option><option value="1">low</option></select></div>
       <div><label for="buzzerPin">Buzzer pin (-1: none)</label><input id="buzzerPin" type="number"></div>
+      <div><label for="buttonPin">Slot button pin (-1: none)</label><input id="buttonPin" type="number"></div>
     </div>
     <div class="actions"><button class="btn primary" id="saveSettings">Save</button></div>
     <div class="msg" id="settingsMsg"></div>
@@ -205,7 +209,7 @@ function renderTarget() {
   $("targetHint").textContent = !p ? "Add a printer on the Printers tab." :
     p.slot ? `This reader is fixed to ${slotName(p, p.slot)}: scans go straight into it.` :
     p.method === "zmod_nfc" ? "Scans go straight to the printer, which asks for the slot on its screen." :
-    "Keep this page open: after each scan, pick the slot below. This printer's screen cannot ask, and nothing is set until you do. To skip this, give it a fixed slot on the Printers tab.";
+    "Keep this page open: after each scan, pick the slot below. This printer's screen cannot ask, and nothing is set until you do. To skip this, click a slot below to send every scan there.";
 }
 
 function renderScan() {
@@ -242,13 +246,34 @@ function renderSlots() {
   const s = status.scan;
   if (!slots) { el.innerHTML = ""; hint.textContent = status.printers.length ? "Loading slots…" : ""; return; }
   if (!slots.ok) { el.innerHTML = ""; hint.textContent = "Printer: " + (slots.error || "not reachable"); return; }
-  hint.textContent = s ? "Click a slot to put this spool in it." : "Current slots. Scan a tag to assign one.";
-  el.innerHTML = slots.slots.map(x => {
+  // A scan waiting for its slot: a click puts it there. Otherwise a click
+  // picks the slot the next scan goes into (the fixed slot, also set on the
+  // Printers tab or with the board's button), or Ask.
+  const waiting = s && s.waiting;
+  const p = status.printers[status.active], next = p ? p.slot : 0;
+  const nextName = next && slots.slots.find(x => x.slot === next);
+  hint.textContent = waiting ? "Click a slot to put this spool in it." :
+    nextName ? `The next scan goes into ${nextName.label}. Click another slot, or Ask, to change that.` :
+    "The printer asks where each scan goes. Click a slot to send every scan there instead.";
+  const mark = on => on && !waiting ? "<br><em>next scan</em>" : "";
+  const ask = p && p.method === "zmod_nfc" ? "on the printer's screen" : "on this page";
+  const tiles = waiting ? [] : [`<button class="slot${next ? "" : " next"}" data-slot="0" ${busy ? "disabled" : ""}><i class="q">?</i><div><b>Ask</b><span>${ask}${mark(!next)}</span></div></button>`];
+  for (const x of slots.slots) {
     const c = x.color ? `background:#${esc(x.color)}` : "";
     const what = [x.material && x.material !== "?" ? x.material : "", x.loaded ? "loaded" : "empty"].filter(Boolean).join(" · ");
-    return `<button class="slot" data-slot="${x.slot}" ${s && !busy ? "" : "disabled"}><i style="${c}"></i><div><b>${esc(x.label)}</b><span>${esc(what)}</span></div></button>`;
-  }).join("");
-  el.querySelectorAll("button").forEach(b => b.onclick = () => assign(+b.dataset.slot));
+    const on = x.slot === next;
+    tiles.push(`<button class="slot${on && !waiting ? " next" : ""}" data-slot="${x.slot}" ${busy ? "disabled" : ""}><i style="${c}"></i><div><b>${esc(x.label)}</b><span>${esc(what)}${mark(on)}</span></div></button>`);
+  }
+  el.innerHTML = tiles.join("");
+  el.querySelectorAll("button").forEach(b => b.onclick = () => waiting ? assign(+b.dataset.slot) : setFixed(+b.dataset.slot));
+}
+
+async function setFixed(slot) {
+  busy = true; renderSlots();
+  const r = await api("/api/fixed_slot", {printer: status.active, slot});
+  if (!r.ok) setStatus($("scanStatus"), r.error, false);
+  busy = false;
+  await refresh();
 }
 
 async function loadSlots(force) {
@@ -276,10 +301,26 @@ async function refresh() {
   try {
     status = await api("/api/status");
     renderHeader(); renderTarget(); renderScan(); renderSlots();
+    followSlots();
     loadSlots(false);
   } catch (e) {
     $("wifiPill").textContent = "Device not reachable"; $("wifiPill").className = "pill bad";
   }
+}
+
+// The board's button changes the active printer's slot: show it on the
+// Printers tab too, so saving that tab does not undo it.
+function followSlots() {
+  if (!config) return;
+  config.printers.forEach((c, i) => {
+    const p = status.printers[c.keep];
+    if (!p || c.savedSlot === p.slot) return;
+    c.savedSlot = c.slot = p.slot;
+    const card = document.querySelector(`.printer[data-i="${i}"]`);
+    if (!card) return;
+    card.querySelector('[data-k="slot"]').value = p.slot;
+    showMethodFields(card);
+  });
 }
 
 $("target").onchange = async e => {
@@ -416,6 +457,7 @@ function renderSettings() {
   $("ledPin").value = config.led_pin;
   $("ledLow").value = config.led_active_low ? 1 : 0;
   $("buzzerPin").value = config.buzzer_pin;
+  $("buttonPin").value = config.button_pin;
   showBus();
 }
 
@@ -428,6 +470,7 @@ async function saveSettings(msg, join) {
     wifi_ssid: $("ssid").value.trim(), hostname: $("hostname").value.trim(),
     reader: Object.assign({chip: $("chip").value, bus: $("bus").value}, ...READER_PINS.map(k => ({[k]: +$(k).value}))),
     led_pin: +$("ledPin").value, led_active_low: $("ledLow").value === "1", buzzer_pin: +$("buzzerPin").value,
+    button_pin: +$("buttonPin").value,
   };
   if ($("wifiPass").value) body.wifi_pass = $("wifiPass").value;
   if (join) body.join = true;
@@ -459,7 +502,7 @@ $("restart").onclick = () => api("/api/restart", {});
 
 async function loadConfig() {
   config = await api("/api/config");
-  config.printers.forEach((p, i) => p.keep = i);
+  config.printers.forEach((p, i) => { p.keep = i; p.savedSlot = p.slot; });
   renderPrinters(); renderSettings();
 }
 

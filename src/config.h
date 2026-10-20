@@ -21,6 +21,8 @@ enum class Method : uint8_t {
 enum class Model : uint8_t { AD5X = 0, Creator5 = 1 };
 
 constexpr size_t MAX_PRINTERS = 6;
+// IFS slots on the AD5X, toolheads on the Creator 5.
+constexpr int SLOT_COUNT = 4;
 constexpr uint16_t MOONRAKER_PORT = 7125;
 constexpr uint16_t FLASHFORGE_PORT = 8898;
 
@@ -56,6 +58,8 @@ struct Config {
     int ledPin = -1;
     bool ledActiveLow = false;
     int buzzerPin = -1;
+    // Push button (to ground) that steps the active printer's slot; -1: none.
+    int buttonPin = -1;
 
     const PrinterConfig *activePrinter() const {
         return active >= 0 && active < (int)printers.size() ? &printers[active] : nullptr;

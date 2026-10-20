@@ -182,6 +182,23 @@ void handleAssign() {
     sendReply(app.assignLast(index, slot));
 }
 
+// The active printer's fixed slot (0: ask), as on the Printers tab.
+void handleFixedSlot() {
+    if (!authorized()) return;
+    JsonDocument doc;
+    if (!readBody(doc)) return;
+    int index = printerIndex(doc), slot = doc["slot"] | -1;
+    if (index < 0 || slot < 0 || slot > SLOT_COUNT) {
+        sendError(400, "printer and slot (0 to " + String(SLOT_COUNT) + ") are needed");
+        return;
+    }
+    app.config.printers[index].slot = slot;
+    saveConfig(app.config);
+    JsonDocument reply;
+    reply["ok"] = true;
+    sendJson(200, reply);
+}
+
 void handleResend() {
     if (!authorized()) return;
     JsonDocument doc;
@@ -297,6 +314,7 @@ void webBegin() {
     server.on("/api/active", HTTP_POST, handleActive);
     server.on("/api/slots", HTTP_GET, handleSlots);
     server.on("/api/assign", HTTP_POST, handleAssign);
+    server.on("/api/fixed_slot", HTTP_POST, handleFixedSlot);
     server.on("/api/resend", HTTP_POST, handleResend);
     server.on("/api/cancel", HTTP_POST, handleCancel);
     server.on("/api/test", HTTP_POST, handleTest);

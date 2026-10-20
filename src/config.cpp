@@ -7,26 +7,30 @@ namespace {
 const char *const NVS_NAMESPACE = "zmodnfc";
 const char *const NVS_KEY = "config";
 
-// Default pins per chip; all can be changed on the web page.
+// Default pins per chip; all can be changed on the web page. The default
+// button is the board's BOOT button.
 #if CONFIG_IDF_TARGET_ESP32S3
 constexpr int DEFAULT_SDA = 8, DEFAULT_SCL = 9, DEFAULT_RX = 18, DEFAULT_TX = 17;
 constexpr int DEFAULT_SCK = 12, DEFAULT_MISO = 13, DEFAULT_MOSI = 11, DEFAULT_SS = 10, DEFAULT_RST = 14;
 constexpr int DEFAULT_BUSY = 15;
 constexpr int DEFAULT_LED = -1;
 constexpr bool DEFAULT_LED_LOW = false;
+constexpr int DEFAULT_BUTTON = 0;
 #elif CONFIG_IDF_TARGET_ESP32C3
-// SuperMini: the blue LED is on GPIO 8 (lit when low).
+// SuperMini: the blue LED is on GPIO 8 (lit when low), BOOT on GPIO 9.
 constexpr int DEFAULT_SDA = 6, DEFAULT_SCL = 7, DEFAULT_RX = 20, DEFAULT_TX = 21;
 constexpr int DEFAULT_SCK = 4, DEFAULT_MISO = 5, DEFAULT_MOSI = 6, DEFAULT_SS = 7, DEFAULT_RST = 3;
 constexpr int DEFAULT_BUSY = 10;
 constexpr int DEFAULT_LED = 8;
 constexpr bool DEFAULT_LED_LOW = true;
+constexpr int DEFAULT_BUTTON = 9;
 #else
 constexpr int DEFAULT_SDA = 21, DEFAULT_SCL = 22, DEFAULT_RX = 16, DEFAULT_TX = 17;
 constexpr int DEFAULT_SCK = 18, DEFAULT_MISO = 19, DEFAULT_MOSI = 23, DEFAULT_SS = 5, DEFAULT_RST = 4;
 constexpr int DEFAULT_BUSY = 27;
 constexpr int DEFAULT_LED = 2;
 constexpr bool DEFAULT_LED_LOW = false;
+constexpr int DEFAULT_BUTTON = 0;
 #endif
 
 int pin(JsonVariantConst value, int fallback) {
@@ -49,6 +53,7 @@ void setDefaults(Config &config) {
     config.reader.busy = DEFAULT_BUSY;
     config.ledPin = DEFAULT_LED;
     config.ledActiveLow = DEFAULT_LED_LOW;
+    config.buttonPin = DEFAULT_BUTTON;
     // The last two bytes of the MAC address, as on the setup access point.
     uint64_t mac = ESP.getEfuseMac();
     char name[24];
@@ -115,6 +120,7 @@ void configToJson(const Config &config, JsonObject out, bool secrets) {
     out["led_pin"] = config.ledPin;
     out["led_active_low"] = config.ledActiveLow;
     out["buzzer_pin"] = config.buzzerPin;
+    out["button_pin"] = config.buttonPin;
     JsonArray printers = out["printers"].to<JsonArray>();
     for (auto &p : config.printers) {
         JsonObject o = printers.add<JsonObject>();
@@ -175,6 +181,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
     next.ledPin = pin(in["led_pin"], next.ledPin);
     if (!in["led_active_low"].isNull()) next.ledActiveLow = in["led_active_low"].as<bool>();
     next.buzzerPin = pin(in["buzzer_pin"], next.buzzerPin);
+    next.buttonPin = pin(in["button_pin"], next.buttonPin);
     JsonArrayConst printers = in["printers"];
     if (!printers.isNull()) {
         if (printers.size() > MAX_PRINTERS) return "at most " + String(MAX_PRINTERS) + " printers";
@@ -197,7 +204,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
             p.port = constrain(o["port"] | 0, 0, 65535);
             // Settings saved before the fixed slot moved into each printer
             // had one auto_slot for all printers.
-            p.slot = constrain(o["slot"] | (in["auto_slot"] | 0), 0, 16);
+            p.slot = constrain(o["slot"] | (in["auto_slot"] | 0), 0, SLOT_COUNT);
             p.serial = o["serial"] | "";
             p.serial.trim();
             readSecret(o, "check_code", p.checkCode);
@@ -221,7 +228,8 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
               next.reader.sck != config.reader.sck || next.reader.miso != config.reader.miso ||
               next.reader.mosi != config.reader.mosi || next.reader.ss != config.reader.ss ||
               next.reader.rst != config.reader.rst || next.reader.busy != config.reader.busy ||
-              next.ledPin != config.ledPin || next.buzzerPin != config.buzzerPin;
+              next.ledPin != config.ledPin || next.buzzerPin != config.buzzerPin ||
+              next.buttonPin != config.buttonPin;
     config = next;
     return "";
 }

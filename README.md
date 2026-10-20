@@ -102,7 +102,9 @@ Each printer on the reader's list uses one of three methods:
   of 8.5 dBm lost most packets on the tested board, which worked well from
   11 dBm up (15 dBm is the C3 default).
 * Optional: an LED and an **active** buzzer. The board's own LED is used by
-  default (GPIO 2 on ESP32 DevKits, GPIO 8 on the C3 SuperMini).
+  default (GPIO 2 on ESP32 DevKits, GPIO 8 on the C3 SuperMini), and its
+  BOOT button picks the slot (GPIO 0, GPIO 9 on the C3; see
+  [Choosing the slot with the button](#choosing-the-slot-with-the-button)).
 
 ### Wiring
 
@@ -121,11 +123,11 @@ levels. Set the PN532's mode switches for the bus you use:
 
 Default pins (all can be changed on the web page):
 
-| Board | I2C SDA | I2C SCL | UART RX (to PN532 TXD) | UART TX (to PN532 RXD) | LED |
-|-------|---------|---------|------------------------|------------------------|-----|
-| ESP32 | 21 | 22 | 16 | 17 | 2 |
-| ESP32-S3 | 8 | 9 | 18 | 17 | none |
-| ESP32-C3 | 6 | 7 | 20 | 21 | 8 (lit when low) |
+| Board | I2C SDA | I2C SCL | UART RX (to PN532 TXD) | UART TX (to PN532 RXD) | LED | Button |
+|-------|---------|---------|------------------------|------------------------|-----|--------|
+| ESP32 | 21 | 22 | 16 | 17 | 2 | 0 (BOOT) |
+| ESP32-S3 | 8 | 9 | 18 | 17 | none | 0 (BOOT) |
+| ESP32-C3 | 6 | 7 | 20 | 21 | 8 (lit when low) | 9 (BOOT) |
 
 ```
 PN532          ESP32 (I2C)          PN532          ESP32 (HSU)
@@ -254,6 +256,10 @@ the printer did, plus the target printer's slots.
 
 ### One reader per slot
 
+On the Scan tab, click a slot (or **Ask**) to choose where the next scans
+of the active printer go; the chosen one is outlined and marked "next scan".
+Only while a scan waits for its slot does a click put that scan there.
+
 Each printer entry has a **Slot for this reader** setting. Set it, and every
 scan on this reader goes straight into that slot (or toolhead on the
 Creator 5) with no question asked. Mount one reader at each IFS slot, set
@@ -266,6 +272,22 @@ A reader can have a fixed slot on one printer and ask on another.
 
 The LED (and buzzer) signal: a short blink when a tag is read, a long one
 when the printer took it, three short ones on an error.
+
+### Choosing the slot with the button
+
+The board's **BOOT button** changes the slot of the active printer (the one
+picked on the Scan tab; choosing the printer stays on the web page):
+
+* Press once: the LED shows the current slot - one blink for slot 1 (T0 on
+  the Creator 5), two for slot 2, and so on; one long blink means "ask".
+* Press again within 5 seconds of the last press: on to the next slot, and
+  the LED shows it. The order is ask, 1, 2, 3, 4, ask, ...
+
+The next scan goes into the shown slot. The choice is the same setting as
+**Slot for this reader** on the Printers tab, and is saved 5 seconds after
+the last press. Another button (wired from a GPIO to GND) can be set under
+**Settings > Slot button pin**, or -1 to turn this off. Don't hold BOOT while
+the board resets or powers up: that starts the ESP32's flash mode.
 
 ## Tag formats
 
@@ -301,7 +323,8 @@ zmod_nfc supports works, including ones the reader does not decode itself.
 The page uses a small JSON API, also usable from scripts: `GET /api/status`
 (reader, Wi-Fi, last scan), `GET/POST /api/config`, `POST /api/active
 {"printer": n}`, `GET /api/slots?printer=n`, `POST /api/assign
-{"printer": n, "slot": s}`, `POST /api/resend`, `POST /api/cancel`,
+{"printer": n, "slot": s}`, `POST /api/fixed_slot {"printer": n, "slot": s}`
+(0: ask), `POST /api/resend`, `POST /api/cancel`,
 `POST /api/test`, `POST /api/rescan`, `GET /api/networks`,
 `POST /api/restart` and `POST /update` (firmware). The protocol between the
 reader and zmod_nfc is in zmod_nfc's

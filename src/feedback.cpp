@@ -5,6 +5,7 @@ const uint16_t READ[] = {60, 0};
 const uint16_t SUCCESS[] = {400, 0};
 const uint16_t FAILURE[] = {80, 80, 80, 80, 80, 0};
 const uint16_t WAITING[] = {60, 120, 60, 0};
+const uint16_t NO_SLOT[] = {900, 0};
 }  // namespace
 
 void Feedback::begin(int ledPin, bool ledActiveLow, int buzzerPin) {
@@ -24,11 +25,29 @@ void Feedback::output(bool on) {
 
 void Feedback::play(Signal signal) {
     switch (signal) {
-    case Signal::Read: pattern_ = READ; break;
-    case Signal::Success: pattern_ = SUCCESS; break;
-    case Signal::Failure: pattern_ = FAILURE; break;
-    case Signal::Waiting: pattern_ = WAITING; break;
+    case Signal::Read: start(READ); break;
+    case Signal::Success: start(SUCCESS); break;
+    case Signal::Failure: start(FAILURE); break;
+    case Signal::Waiting: start(WAITING); break;
     }
+}
+
+void Feedback::count(int n) {
+    if (n <= 0) {
+        start(NO_SLOT);
+        return;
+    }
+    n = min(n, 8);
+    for (int i = 0; i < n; i++) {
+        counted_[2 * i] = 200;
+        counted_[2 * i + 1] = 250;
+    }
+    counted_[2 * n - 1] = 0;
+    start(counted_);
+}
+
+void Feedback::start(const uint16_t *pattern) {
+    pattern_ = pattern;
     step_ = 0;
     stepStart_ = millis();
     output(true);
