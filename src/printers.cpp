@@ -260,7 +260,7 @@ void describeOutcome(PrinterReply &reply, JsonObjectConst remote) {
 
 PrinterReply zmodNfcScan(const PrinterConfig &printer, const Tag &tag, const String &readerName) {
     PrinterReply reply;
-    HttpResult result = moonraker(printer, "/zmod_nfc/scan", "POST", scanBody(tag, readerName));
+    HttpResult result = moonraker(printer, "/printer/zmod_nfc/scan", "POST", scanBody(tag, readerName));
     JsonDocument doc;
     deserializeJson(doc, result.body);
     if (!result.ok()) {
@@ -295,7 +295,7 @@ PrinterReply zmodNfcAssign(const PrinterConfig &printer, const Tag &tag, int slo
     PrinterReply reply;
     String body = "{\"slot\":" + String(slot) + "}";
     for (int attempt = 0; attempt < 2; attempt++) {
-        HttpResult result = moonraker(printer, "/zmod_nfc/assign", "POST", body);
+        HttpResult result = moonraker(printer, "/printer/zmod_nfc/assign", "POST", body);
         JsonDocument doc;
         deserializeJson(doc, result.body);
         if (result.ok()) {
@@ -318,7 +318,7 @@ PrinterReply zmodNfcAssign(const PrinterConfig &printer, const Tag &tag, int slo
 
 SlotList zmodNfcSlots(const PrinterConfig &printer) {
     SlotList list;
-    HttpResult result = moonraker(printer, "/zmod_nfc/info", "GET");
+    HttpResult result = moonraker(printer, "/printer/zmod_nfc/info", "GET");
     JsonDocument doc;
     deserializeJson(doc, result.body);
     if (!result.ok()) {
@@ -581,7 +581,7 @@ PrinterReply assignSlot(const PrinterConfig &printer, const Tag &tag, const Fila
 }
 
 void cancelPrompt(const PrinterConfig &printer) {
-    if (printer.method == Method::ZmodNfc) moonraker(printer, "/zmod_nfc/cancel", "POST", "{}");
+    if (printer.method == Method::ZmodNfc) moonraker(printer, "/printer/zmod_nfc/cancel", "POST", "{}");
 }
 
 SlotList listSlots(const PrinterConfig &printer) {
