@@ -26,6 +26,10 @@ The two plugins below are **optional extras, not requirements**:
 | **Zmod + [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc)** (optional plugin) | The full integration: every tag format decoded on the printer, **Spoolman** spool matching, the slot **popup on the printer's screen** (or just insert the filament), and lane data with the spool's details - the same as a USB reader plugged into the printer. |
 | **+ [zmod_afclite](https://github.com/DIEHARDave/zmod_afclite)** (optional plugin, with zmod_nfc) | Each IFS slot (or Creator 5 toolhead) keeps track of its own Spoolman spool, and Moonraker's active spool follows the one in use. zmod_nfc works without it. |
 
+Without zmod_nfc the printer cannot ask which slot a spool goes in, so each
+printer is given a fixed slot on the reader (see
+[Printer methods](#printer-methods)).
+
 ```
            ┌────────── ESP32 + PN532 ──────────┐
  tag ────► │ read the whole tag (NTAG, MIFARE   │
@@ -64,9 +68,15 @@ Each printer on the reader's list uses one of three methods:
 | **Zmod basic** | Zmod, no plugin | Material and colour go to the slot through Moonraker (`CHANGE_ZCOLOR`), snapped to Zmod's material list and colour palette, and the slot's **lane_data** entry gets the material, colour, vendor, temperatures and the tag's Spoolman spool ID if it carries one. No Spoolman lookup. |
 | **Stock firmware** | Flashforge firmware | Material and colour through the printer's local API (`msConfig_cmd` on port 8898) - that is all the stock API offers. Needs the printer's **serial number** and **check code**. The stock screens can only draw their own 24 colours (a different set on each model), so the colour is snapped to the closest one (CIEDE2000), and on the Creator 5 the material to its list. |
 
-With Zmod basic and stock, pick the slot on the reader's web page after a
-scan. With any method, a reader can also be fixed to one slot; see
-[One reader per slot](#one-reader-per-slot).
+> **Stock firmware and Zmod basic: give each printer a fixed slot.** Only
+> zmod_nfc can show a "which slot?" popup on the printer's screen. With the
+> other two methods the printer cannot ask, so set **Slot for this reader**
+> on the Printers tab (new stock and Zmod basic printers start on slot 1):
+> every scan then fills that slot by itself. If you choose **"Ask on this
+> web page"** instead, nothing is set until you pick the slot on the
+> reader's web page after each scan, so that page has to be open in a
+> browser (a phone works) whenever you scan. See
+> [One reader per slot](#one-reader-per-slot) for one reader per slot.
 
 ## Hardware
 
@@ -163,7 +173,10 @@ the printer did, plus the target printer's slots.
   in, just like with a USB reader. Tap a slot there, insert the filament
   into an empty slot, or click a slot on the reader's page. **Send to
   printer again** reopens the popup.
-* **Zmod basic / stock:** click the slot on the page.
+* **Zmod basic / stock:** with a fixed slot, the scan fills it straight away
+  (the LED gives a long blink when the printer took it). With "Ask on this
+  web page", keep the reader's page open and click the slot after each
+  scan; the printer's screen cannot ask.
 
 ### One reader per slot
 

@@ -198,7 +198,7 @@ function renderTarget() {
   $("targetHint").textContent = !p ? "Add a printer on the Printers tab." :
     p.slot ? `This reader is fixed to ${slotName(p, p.slot)}: scans go straight into it.` :
     p.method === "zmod_nfc" ? "Scans go straight to the printer, which asks for the slot on its screen." :
-    "After a scan, pick the slot below.";
+    "Keep this page open: after each scan, pick the slot below. This printer's screen cannot ask, and nothing is set until you do. To skip this, give it a fixed slot on the Printers tab.";
 }
 
 function renderScan() {
@@ -293,8 +293,11 @@ function slotName(p, n) {
   return p.model === "creator5" ? `toolhead T${n - 1}` : `slot ${n}`;
 }
 
+// Only zmod_nfc can ask on the printer's screen. With the other methods
+// "ask" means picking the slot on this page after every scan.
 function slotOptions(p) {
-  let html = `<option value="0" ${p.slot ? "" : "selected"}>Ask when scanned</option>`;
+  const ask = p.method === "zmod_nfc" ? "Ask on the printer's screen" : "Ask on this web page";
+  let html = `<option value="0" ${p.slot ? "" : "selected"}>${ask}</option>`;
   for (let n = 1; n <= 4; n++) html += `<option value="${n}" ${p.slot === n ? "selected" : ""}>Always ${slotName(p, n)}</option>`;
   return html;
 }
@@ -313,12 +316,22 @@ function printerCard(p, i) {
     <div class="m-stock"><label>Check code</label><input data-k="check_code" type="password" autocomplete="new-password" placeholder="${p.check_code_set ? "unchanged" : ""}"></div>
     <div class="m-zmod"><label>Moonraker API key (if needed)</label><input data-k="api_key" type="password" autocomplete="new-password" placeholder="${p.api_key_set ? "unchanged" : "none"}"></div>
   </div>
+  <div class="banner slot-warn hidden">The printer's screen cannot ask where this spool goes with this method. With "Ask on this web page", nothing is sent to the printer until you pick the slot on this reader's web page to send to. So the esp32 web page has to be open in a browser when you scan. Pick a fixed slot to have every scan fill that slot by itself.</div>
   <div class="actions"><button class="btn test">Test</button><button class="btn danger remove">Remove</button><span class="msg"></span></div>
 </div>`;
 }
 
 function showMethodFields(card) {
   const m = card.querySelector('[data-k="method"]').value;
+  const model = card.querySelector('[data-k="model"]').value;
+  const slot = card.querySelector('[data-k="slot"]');
+  let value = +slot.value;
+  // Switching to a method whose printer cannot ask: default to a fixed slot,
+  // so a scan fills it without the web page.
+  if (m !== "zmod_nfc" && card.dataset.method === "zmod_nfc" && !value) value = 1;
+  card.dataset.method = m;
+  slot.innerHTML = slotOptions({method: m, model, slot: value});
+  card.querySelector(".slot-warn").classList.toggle("hidden", m === "zmod_nfc" || value !== 0);
   card.querySelectorAll(".m-stock").forEach(e => e.classList.toggle("hidden", m !== "stock"));
   card.querySelectorAll(".m-zmod").forEach(e => e.classList.toggle("hidden", m === "stock"));
   card.querySelector('[data-k="port"]').placeholder = m === "stock" ? 8898 : 7125;
@@ -328,7 +341,7 @@ function renderPrinters() {
   $("printerList").innerHTML = config.printers.map(printerCard).join("") || '<div class="hint">No printers yet.</div>';
   document.querySelectorAll(".printer").forEach(card => {
     showMethodFields(card);
-    card.querySelector('[data-k="method"]').onchange = () => showMethodFields(card);
+    for (const k of ["method", "model", "slot"]) card.querySelector(`[data-k="${k}"]`).onchange = () => showMethodFields(card);
     card.querySelector(".remove").onclick = () => { collectPrinters(); config.printers.splice(+card.dataset.i, 1); renderPrinters(); };
     card.querySelector(".test").onclick = async () => {
       const msg = card.querySelector(".msg");
