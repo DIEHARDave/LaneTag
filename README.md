@@ -23,14 +23,15 @@ printers and their IP addresses, and how each printer is reached.
 ```
 
 > **Status: early release.** Tested on an **ESP32-C3 SuperMini** with a
-> **PN532 over I2C** and a **Creator 5** running Zmod and zmod_nfc: an
-> OpenSpool NTAG read, sent through Moonraker, and assigned both from the
-> printer's prompt and with the reader fixed to one toolhead. The firmware
+> **PN532 over I2C** and a **Creator 5** running Zmod and zmod_nfc: OpenSpool
+> (NTAG) and Snapmaker (MIFARE Classic, keys derived from the UID) tags
+> read, sent through Moonraker, and assigned both from the printer's prompt
+> and with the reader fixed to one toolhead. The firmware
 > builds for ESP32, ESP32-S3 and ESP32-C3 without warnings. Its decoders and
 > MIFARE key derivation match [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc)'s
 > (identical results for every tag in zmod_nfc's decoder tests, identical
-> Bambu, Creality and Snapmaker keys). Not yet tried: MIFARE Classic tags
-> (Bambu, Creality, Snapmaker) on the PN532, HSU wiring, the AD5X, and the
+> Bambu, Creality and Snapmaker keys). Not yet tried: Bambu and Creality
+> tags, HSU wiring, the AD5X, and the
 > **Zmod basic** and **stock firmware** methods. Reports are welcome.
 
 ## Printer methods
