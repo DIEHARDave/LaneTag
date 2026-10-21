@@ -43,7 +43,8 @@ private:
     void renderSetup();
     void renderScan();
     void renderIdle();
-    void header();
+    void footer();
+    void title(const String &text);
     // Word-wrapped text in the small font; returns the y after the last line.
     int wrap(const String &text, int y, int maxLines);
 

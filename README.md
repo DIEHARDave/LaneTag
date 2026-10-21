@@ -307,9 +307,10 @@ the board resets or powers up: that starts the ESP32's flash mode.
 
 With an OLED set up under **Settings > Display**, the reader shows:
 
-* the active printer and its slot (`Ask`, `Slot 1`-`4` on the AD5X, `T0`-`T3`
+* at the bottom, the active printer and its slot (`Ask`, `Slot 1`-`4` on the AD5X, `T0`-`T3`
   on the Creator 5); pressing the slot button shows the slot in large type
-* after a scan, the filament it found: material, brand, the Spoolman spool
+* after a scan, the filament it found: the material in the top 16 rows (the
+  yellow band on two-colour OLEDs), brand, the Spoolman spool
   (`#19`), a colour name with its hex value (the screen is monochrome) and
   the nozzle temperature, then what happened (sent, assigned, pick the slot
   on the printer, or the error). Tags only the zmod_nfc plugin can decode show

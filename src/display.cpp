@@ -22,6 +22,7 @@ constexpr int WIDTH = 128;
 const uint8_t *const SMALL = u8g2_font_5x7_tf;
 const uint8_t *const MEDIUM = u8g2_font_6x10_tf;
 const uint8_t *const LARGE = u8g2_font_helvB12_tf;
+const uint8_t *const TITLE_SMALLER = u8g2_font_helvB10_tf;
 const uint8_t *const HUGE_ = u8g2_font_helvB24_tf;
 
 uint8_t byteCallback(u8x8_t *u8x8, uint8_t msg, uint8_t count, void *data) {
@@ -174,22 +175,37 @@ void Display::render() {
     renderIdle();
 }
 
-// Printer and slot, then a line.
-void Display::header() {
+// Printer and slot, under a line at the bottom.
+void Display::footer() {
     const PrinterConfig *printer = app.config.activePrinter();
+    u8g2_->drawHLine(0, 53, WIDTH);
     u8g2_->setFont(MEDIUM);
     if (!printer) {
-        u8g2_->drawUTF8(0, 8, "No printer");
-    } else {
-        String slot = slotName(*printer, printer->slot);
-        int slotWidth = u8g2_->getUTF8Width(slot.c_str());
-        u8g2_->drawUTF8(WIDTH - slotWidth, 8, slot.c_str());
-        String name = printer->name;
-        while (name.length() > 1 && u8g2_->getUTF8Width(name.c_str()) > WIDTH - slotWidth - 6)
-            name.remove(name.length() - 1);
-        u8g2_->drawUTF8(0, 8, name.c_str());
+        u8g2_->drawUTF8(0, 63, "No printer");
+        return;
     }
-    u8g2_->drawHLine(0, 10, WIDTH);
+    String slot = slotName(*printer, printer->slot);
+    int slotWidth = u8g2_->getUTF8Width(slot.c_str());
+    u8g2_->drawUTF8(WIDTH - slotWidth, 63, slot.c_str());
+    String name = printer->name;
+    while (name.length() > 1 && u8g2_->getUTF8Width(name.c_str()) > WIDTH - slotWidth - 6)
+        name.remove(name.length() - 1);
+    u8g2_->drawUTF8(0, 63, name.c_str());
+}
+
+// One line in the top 16 rows (yellow on two-colour OLEDs), in the largest
+// font it fits.
+void Display::title(const String &text) {
+    for (const uint8_t *font : {LARGE, TITLE_SMALLER, MEDIUM}) {
+        u8g2_->setFont(font);
+        if (u8g2_->getUTF8Width(text.c_str()) <= WIDTH) {
+            u8g2_->drawUTF8(0, 12, text.c_str());
+            return;
+        }
+    }
+    String shown = text;
+    while (shown.length() > 1 && u8g2_->getUTF8Width(shown.c_str()) > WIDTH) shown.remove(shown.length() - 1);
+    u8g2_->drawUTF8(0, 12, shown.c_str());
 }
 
 int Display::wrap(const String &text, int y, int maxLines) {
@@ -227,94 +243,92 @@ int Display::wrap(const String &text, int y, int maxLines) {
 }
 
 void Display::renderSlot() {
-    header();
     const PrinterConfig *printer = app.config.activePrinter();
-    if (!printer) return;
+    if (!printer) return title("No printer");
+    title(printer->name);
     u8g2_->setFont(SMALL);
-    u8g2_->drawUTF8(0, 22, printer->slot ? "Scans go to" : "Scans ask for the slot");
+    u8g2_->drawUTF8(0, 25, printer->slot ? "Scans go to" : "Scans ask for the slot");
     u8g2_->setFont(HUGE_);
     String slot = slotName(*printer, printer->slot);
-    u8g2_->drawUTF8((WIDTH - u8g2_->getUTF8Width(slot.c_str())) / 2, 54, slot.c_str());
+    u8g2_->drawUTF8((WIDTH - u8g2_->getUTF8Width(slot.c_str())) / 2, 58, slot.c_str());
 }
 
 void Display::renderSetup() {
-    u8g2_->setFont(MEDIUM);
-    u8g2_->drawUTF8(0, 8, "Wi-Fi setup");
-    u8g2_->drawHLine(0, 10, WIDTH);
+    title("Wi-Fi setup");
     u8g2_->setFont(SMALL);
-    u8g2_->drawUTF8(0, 20, ("Join " + app.apName).c_str());
-    u8g2_->drawUTF8(0, 29, "password zmodnfc1");
-    u8g2_->drawUTF8(0, 38, ("open " + WiFi.softAPIP().toString()).c_str());
-    if (app.wifiError.length()) wrap(app.wifiError, 38, 3);
+    u8g2_->drawUTF8(0, 25, ("Join " + app.apName).c_str());
+    u8g2_->drawUTF8(0, 34, "password zmodnfc1");
+    u8g2_->drawUTF8(0, 43, ("open " + WiFi.softAPIP().toString()).c_str());
+    if (app.wifiError.length()) wrap(app.wifiError, 44, 2);
 }
 
 void Display::renderIdle() {
-    header();
-    int y;
+    footer();
     if (!app.reader.connected()) {
-        u8g2_->setFont(LARGE);
-        u8g2_->drawUTF8(0, 26, "No reader");
-        y = wrap(app.reader.error(), 28, 3);
-    } else {
-        u8g2_->setFont(LARGE);
-        u8g2_->drawUTF8(0, 28, "Ready");
-        u8g2_->setFont(SMALL);
-        u8g2_->drawUTF8(0, 40, "Hold a spool to the reader");
-        y = 40;
+        title("No reader");
+        wrap(app.reader.error(), 17, 4);
+        return;
     }
-    if (y <= 54) {
-        u8g2_->setFont(SMALL);
-        String address = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("Wi-Fi lost");
-        u8g2_->drawUTF8(0, 63, address.c_str());
-    }
+    title("Ready");
+    u8g2_->setFont(SMALL);
+    u8g2_->drawUTF8(0, 27, "Hold a spool to the reader");
+    String address = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("Wi-Fi lost");
+    u8g2_->drawUTF8(0, 40, address.c_str());
 }
 
 // The filament of the last scan and how it went:
-//   PLA Silk                 (material, large)
+//   PLA Silk                 (material; the yellow band)
 //   Polymaker        #19     (brand, Spoolman spool)
 //   orange FF8000  220C      (colour, nozzle)
-//   Assigned to T1 ...       (status, small)
+//   Assigned to ...          (status, small)
+//   -----------------
+//   AD5X-1          Slot 1   (printer and slot)
 void Display::renderScan() {
-    header();
+    footer();
     const ScanRecord &last = app.last;
     const Filament &f = last.filament;
-    String title, brand, detail;
+    String name, brand, detail;
     if (f.hasFilamentData()) {
-        title = f.material;
-        if (f.modifiers.length()) title += " " + f.modifiers;
+        name = f.material;
+        if (f.modifiers.length()) name += " " + f.modifiers;
         brand = f.brand.length() ? f.brand : f.name;
         if (f.color >= 0) detail = String(colorName(f.color)) + " " + f.colorHex();
         int nozzle = f.nozzleTemp();
-        if (nozzle) detail += (detail.length() ? "  " : "") + String(nozzle) + "\xC2\xB0" "C";
+        if (nozzle) detail += (detail.length() ? "  " : "") + String(nozzle) + "°" "C";
     } else if (last.printerTitle.length()) {
         // zmod_nfc decodes formats the reader does not know.
-        title = last.printerTitle;
+        name = last.printerTitle;
     } else {
-        title = f.spoolId ? "Spool tag" : "Unknown tag";
+        name = f.spoolId ? "Spool tag" : "Unknown tag";
         brand = tagKindName(last.tag.kind);
     }
-    if (!title.length()) title = last.printerTitle;
-    u8g2_->setFont(LARGE);
-    String shown = title;
-    while (shown.length() > 1 && u8g2_->getUTF8Width(shown.c_str()) > WIDTH) shown.remove(shown.length() - 1);
-    u8g2_->drawUTF8(0, 25, shown.c_str());
+    if (!name.length()) name = last.printerTitle;
+    title(name);
 
+    int y = 15;
     u8g2_->setFont(MEDIUM);
     int spool = last.printerSpool ? last.printerSpool : f.spoolId;
     int spoolWidth = 0;
     if (spool) {
         String id = "#" + String(spool);
         spoolWidth = u8g2_->getUTF8Width(id.c_str()) + 4;
-        u8g2_->drawUTF8(WIDTH - spoolWidth + 4, 36, id.c_str());
+        u8g2_->drawUTF8(WIDTH - spoolWidth + 4, 25, id.c_str());
     }
     while (brand.length() > 1 && u8g2_->getUTF8Width(brand.c_str()) > WIDTH - spoolWidth) brand.remove(brand.length() - 1);
-    if (brand.length()) u8g2_->drawUTF8(0, 36, brand.c_str());
-    if (detail.length()) u8g2_->drawUTF8(0, 46, detail.c_str());
+    if (brand.length() || spool) {
+        u8g2_->drawUTF8(0, 25, brand.c_str());
+        y = 25;
+    }
+    if (detail.length()) {
+        y += 10;
+        u8g2_->drawUTF8(0, y, detail.c_str());
+    }
 
     String status = last.status;
     if (last.waiting && last.printer >= 0 && last.printer < (int)app.config.printers.size())
         status = app.config.printers[last.printer].method == Method::ZmodNfc ? "Pick the slot on the printer's screen"
                                                                              : "Pick a slot on the web page";
     if (!last.ok && status.length()) status = "! " + status;
-    wrap(status, detail.length() ? 47 : 39, detail.length() ? 2 : 3);
+    // Status lines end above the footer line (y 53).
+    wrap(status, y, (51 - y) / 8);
 }
