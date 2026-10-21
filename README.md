@@ -57,11 +57,11 @@ printer is given a fixed slot on the reader (see
 > MIFARE key derivation match [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc)'s
 > (identical results for every tag in zmod_nfc's decoder tests, identical
 > Bambu, Creality and Snapmaker keys). Not yet tried: Bambu and Creality
-> tags, HSU wiring, a factory-fresh printer, the stock method on the
-> Creator 5, and the **Zmod basic** method. **RC522 and PN5180 support is
-> new and has not been run on hardware yet** (it builds; both drivers are
-> written from the NXP datasheets, the PN5180's command layer follows
-> zmod_nfc's). The OpenPrintTag decoder gives the same results as
+> tags, a factory-fresh printer, the stock method on the Creator 5, and
+> the **Zmod basic** method. The PN532 works over I2C (ESP32-C3) and HSU
+> (classic ESP32), and the RC522 read tags on an ESP32-C3. **PN5180
+> support has not been run on hardware yet** (it builds; its driver is
+> written from the NXP datasheet, its command layer follows zmod_nfc's). The OpenPrintTag decoder gives the same results as
 > zmod_nfc's on its six OpenPrintTag test dumps. Reports are welcome.
 
 ## Printer methods
@@ -136,6 +136,17 @@ PN532          ESP32 (I2C)          PN532          ESP32 (HSU)
  SDA  ──────── GPIO 21               TXD  ──────── GPIO 16 (RX)
  SCL  ──────── GPIO 22               RXD  ──────── GPIO 17 (TX)
 ```
+
+**If the PN532 is not found on I2C, try HSU.** The I2C pins double as the
+HSU pins (SDA is TXD, SCL is RXD), so no wire moves: set both switches OFF,
+choose HSU on the Settings tab with **RX** = the GPIO that SDA is on and
+**TX** = the GPIO that SCL is on, and power the PN532 off and on (it reads
+its switches only at power-up). On an Ideaspark "ESP32 OLED 0.96" board,
+two PN532 V3 boards that work on I2C on an ESP32-C3 held SCL low and were
+never found on I2C, and both worked in HSU. The reader's status names an
+I2C line that stays low.
+
+The PN532's SPI mode (switch 1 OFF, switch 2 ON) is not supported.
 
 #### RC522
 
