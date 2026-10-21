@@ -145,6 +145,20 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
     <div class="msg" id="settingsMsg"></div>
   </div>
   <div class="card">
+    <h2>Display</h2>
+    <div class="grid">
+      <div><label for="dispType">OLED (128x64, I2C)</label><select id="dispType"><option value="none">None</option><option value="ssd1306">SSD1306 (0.96")</option><option value="sh1106">SH1106 (1.3")</option></select></div>
+      <div class="disp"><label for="dispSda">SDA pin</label><input id="dispSda" type="number"></div>
+      <div class="disp"><label for="dispScl">SCL pin</label><input id="dispScl" type="number"></div>
+      <div class="disp"><label for="dispAddr">Address</label><select id="dispAddr"><option value="60">0x3C</option><option value="61">0x3D</option></select></div>
+      <div class="disp"><label for="dispFlip">Orientation</label><select id="dispFlip"><option value="0">Normal</option><option value="1">Upside down</option></select></div>
+      <div class="disp"><label for="dispSleep">Screen off after (minutes, 0: never)</label><input id="dispSleep" type="number" min="0"></div>
+    </div>
+    <div class="hint">Shows the active printer and slot, and the filament of the last scan. It can share the PN532's I2C pins. Boards with a built-in 0.96" OLED (such as the Ideaspark ESP32) usually have it on SDA 21 / SCL 22.</div>
+    <div class="msg" id="dispMsg"></div>
+    <div class="actions"><button class="btn primary" id="saveDisplay">Save</button></div>
+  </div>
+  <div class="card">
     <h2>Firmware</h2>
     <div class="muted" id="version"></div>
     <label for="fw">Firmware file (.pio/build/&lt;board&gt;/firmware.bin)</label>
@@ -458,8 +472,31 @@ function renderSettings() {
   $("ledLow").value = config.led_active_low ? 1 : 0;
   $("buzzerPin").value = config.buzzer_pin;
   $("buttonPin").value = config.button_pin;
+  const d = config.display || {};
+  $("dispType").value = d.type || "none";
+  $("dispSda").value = d.sda;
+  $("dispScl").value = d.scl;
+  $("dispAddr").value = String(d.address || 60);
+  $("dispFlip").value = d.flip ? 1 : 0;
+  $("dispSleep").value = d.sleep ?? 10;
+  showDisplay();
   showBus();
 }
+
+function displaySettings() {
+  return {type: $("dispType").value, sda: +$("dispSda").value, scl: +$("dispScl").value,
+    address: +$("dispAddr").value, flip: $("dispFlip").value === "1", sleep: +$("dispSleep").value};
+}
+function showDisplay() {
+  document.querySelectorAll(".disp").forEach(e => e.classList.toggle("hidden", $("dispType").value === "none"));
+  const d = status && status.display;
+  setStatus($("dispMsg"), d && d.error ? d.error : "", d ? !d.error : undefined);
+}
+$("dispType").onchange = showDisplay;
+$("saveDisplay").onclick = async () => {
+  const r = await api("/api/config", {display: displaySettings()});
+  setStatus($("dispMsg"), r.ok ? (r.restart ? "Saved; restarting" : "Saved") : r.error, r.ok);
+};
 
 $("wifiPower").onchange = async () => {
   const r = await api("/api/config", {wifi_power: +$("wifiPower").value});
@@ -470,7 +507,7 @@ async function saveSettings(msg, join) {
     wifi_ssid: $("ssid").value.trim(), hostname: $("hostname").value.trim(),
     reader: Object.assign({chip: $("chip").value, bus: $("bus").value}, ...READER_PINS.map(k => ({[k]: +$(k).value}))),
     led_pin: +$("ledPin").value, led_active_low: $("ledLow").value === "1", buzzer_pin: +$("buzzerPin").value,
-    button_pin: +$("buttonPin").value,
+    button_pin: +$("buttonPin").value, display: displaySettings(),
   };
   if ($("wifiPass").value) body.wifi_pass = $("wifiPass").value;
   if (join) body.join = true;

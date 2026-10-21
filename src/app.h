@@ -2,6 +2,7 @@
 #pragma once
 
 #include "config.h"
+#include "display.h"
 #include "feedback.h"
 #include "printers.h"
 #include "reader.h"
@@ -25,6 +26,7 @@ struct App {
     Config config;
     TagReader reader;
     Feedback feedback;
+    Display display;
     ScanRecord last;
     bool apMode = false;
     String apName;

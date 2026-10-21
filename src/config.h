@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include <vector>
 
+#include "display.h"
 #include "reader.h"
 
 // How a scan reaches a printer.
@@ -60,6 +61,7 @@ struct Config {
     int buzzerPin = -1;
     // Push button (to ground) that steps the active printer's slot; -1: none.
     int buttonPin = -1;
+    DisplayConfig display;
 
     const PrinterConfig *activePrinter() const {
         return active >= 0 && active < (int)printers.size() ? &printers[active] : nullptr;

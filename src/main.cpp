@@ -52,6 +52,7 @@ void buttonPressed(bool step) {
         log_i("button: %s slot %d", printer.name.c_str(), printer.slot);
     }
     app.feedback.count(printer.slot);
+    app.display.showSlot();
 }
 
 void buttonLoop() {
@@ -187,7 +188,15 @@ void App::handleTag(const Tag &tag) {
         return;
     }
     last.printer = config.active;
+    // Sending can take seconds (zmod_nfc waits for Spoolman); show the
+    // filament meanwhile.
+    auto sending = [&] {
+        last.ok = true;
+        last.status = "Sending to " + printer->name + "...";
+        display.refresh();
+    };
     if (printer->method == Method::ZmodNfc) {
+        sending();
         // The printer decodes the raw read itself; no need to know the format
         // here. A reader fixed to a slot skips the printer's prompt.
         PrinterReply reply = sendScan(*printer, tag, readerName(), printer->slot);
@@ -204,6 +213,7 @@ void App::handleTag(const Tag &tag) {
         return;
     }
     if (printer->slot > 0) {
+        sending();
         record(assignSlot(*printer, tag, last.filament, printer->slot, readerName()));
         return;
     }
@@ -262,6 +272,7 @@ void setup() {
     app.feedback.begin(app.config.ledPin, app.config.ledActiveLow, app.config.buzzerPin);
     if (app.config.buttonPin >= 0) pinMode(app.config.buttonPin, INPUT_PULLUP);
     app.reader.begin(app.config.reader);
+    app.display.begin(app.config.display, app.config.reader);
     startWifi();
     if (MDNS.begin(app.config.hostname.c_str())) MDNS.addService("http", "tcp", 80);
     webBegin();
@@ -271,6 +282,7 @@ void loop() {
     static uint32_t lastPoll = 0;
     webLoop();
     app.feedback.loop();
+    app.display.loop();
     buttonLoop();
     if (app.apMode && app.config.wifiSsid.length()) {
         if (WiFi.status() == WL_CONNECTED) {

@@ -54,6 +54,9 @@ void setDefaults(Config &config) {
     config.ledPin = DEFAULT_LED;
     config.ledActiveLow = DEFAULT_LED_LOW;
     config.buttonPin = DEFAULT_BUTTON;
+    // An OLED most likely shares the reader's I2C pins.
+    config.display.sda = DEFAULT_SDA;
+    config.display.scl = DEFAULT_SCL;
     // The last two bytes of the MAC address, as on the setup access point.
     uint64_t mac = ESP.getEfuseMac();
     char name[24];
@@ -121,6 +124,13 @@ void configToJson(const Config &config, JsonObject out, bool secrets) {
     out["led_active_low"] = config.ledActiveLow;
     out["buzzer_pin"] = config.buzzerPin;
     out["button_pin"] = config.buttonPin;
+    JsonObject display = out["display"].to<JsonObject>();
+    display["type"] = displayTypeName(config.display.type);
+    display["sda"] = config.display.sda;
+    display["scl"] = config.display.scl;
+    display["address"] = config.display.address;
+    display["flip"] = config.display.flip;
+    display["sleep"] = config.display.sleepMinutes;
     JsonArray printers = out["printers"].to<JsonArray>();
     for (auto &p : config.printers) {
         JsonObject o = printers.add<JsonObject>();
@@ -182,6 +192,22 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
     if (!in["led_active_low"].isNull()) next.ledActiveLow = in["led_active_low"].as<bool>();
     next.buzzerPin = pin(in["buzzer_pin"], next.buzzerPin);
     next.buttonPin = pin(in["button_pin"], next.buttonPin);
+    JsonObjectConst display = in["display"];
+    if (!display.isNull()) {
+        String type = display["type"] | "none";
+        next.display.type = type == "ssd1306"  ? DisplayType::SSD1306
+                            : type == "sh1106" ? DisplayType::SH1106
+                                               : DisplayType::None;
+        next.display.sda = pin(display["sda"], next.display.sda);
+        next.display.scl = pin(display["scl"], next.display.scl);
+        int address = display["address"] | (int)next.display.address;
+        if (address < 0x08 || address > 0x77) return "the display address must be 0x08 to 0x77 (usually 0x3C)";
+        next.display.address = address;
+        if (!display["flip"].isNull()) next.display.flip = display["flip"].as<bool>();
+        next.display.sleepMinutes = constrain(display["sleep"] | next.display.sleepMinutes, 0, 1440);
+        if (next.display.type != DisplayType::None && (next.display.sda < 0 || next.display.scl < 0))
+            return "the display needs its SDA and SCL pins";
+    }
     JsonArrayConst printers = in["printers"];
     if (!printers.isNull()) {
         if (printers.size() > MAX_PRINTERS) return "at most " + String(MAX_PRINTERS) + " printers";
@@ -229,7 +255,10 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
               next.reader.mosi != config.reader.mosi || next.reader.ss != config.reader.ss ||
               next.reader.rst != config.reader.rst || next.reader.busy != config.reader.busy ||
               next.ledPin != config.ledPin || next.buzzerPin != config.buzzerPin ||
-              next.buttonPin != config.buttonPin;
+              next.buttonPin != config.buttonPin || next.display.type != config.display.type ||
+              next.display.sda != config.display.sda || next.display.scl != config.display.scl ||
+              next.display.address != config.display.address || next.display.flip != config.display.flip ||
+              next.display.sleepMinutes != config.display.sleepMinutes;
     config = next;
     return "";
 }

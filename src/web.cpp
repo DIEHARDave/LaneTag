@@ -85,6 +85,11 @@ void handleStatus() {
     reader["ok"] = app.reader.connected();
     reader["name"] = app.reader.describe();
     reader["error"] = app.reader.error();
+    if (app.config.display.type != DisplayType::None) {
+        JsonObject display = doc["display"].to<JsonObject>();
+        display["ok"] = app.display.enabled();
+        display["error"] = app.display.error();
+    }
     doc["active"] = app.config.active;
     JsonArray printers = doc["printers"].to<JsonArray>();
     for (auto &p : app.config.printers) {

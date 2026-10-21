@@ -105,6 +105,8 @@ Each printer on the reader's list uses one of three methods:
   default (GPIO 2 on ESP32 DevKits, GPIO 8 on the C3 SuperMini), and its
   BOOT button picks the slot (GPIO 0, GPIO 9 on the C3; see
   [Choosing the slot with the button](#choosing-the-slot-with-the-button)).
+* Optional: a 128x64 I2C OLED (SSD1306 0.96" or SH1106 1.3"), see
+  [The display](#the-display).
 
 ### Wiring
 
@@ -300,6 +302,27 @@ The next scan goes into the shown slot. The choice is the same setting as
 the last press. Another button (wired from a GPIO to GND) can be set under
 **Settings > Slot button pin**, or -1 to turn this off. Don't hold BOOT while
 the board resets or powers up: that starts the ESP32's flash mode.
+
+### The display
+
+With an OLED set up under **Settings > Display**, the reader shows:
+
+* the active printer and its slot (`Ask`, `Slot 1`-`4` on the AD5X, `T0`-`T3`
+  on the Creator 5); pressing the slot button shows the slot in large type
+* after a scan, the filament it found: material, brand, the Spoolman spool
+  (`#19`), a colour name with its hex value (the screen is monochrome) and
+  the nozzle temperature, then what happened (sent, assigned, pick the slot
+  on the printer, or the error). Tags only the zmod_nfc plugin can decode show
+  the printer's name for the spool.
+* with no scan for 5 minutes: "Ready" and the IP address, or the reader error
+* in setup mode: the setup network, its password and the address to open
+
+The screen turns off after 10 minutes without a change (OLEDs burn in) and
+comes back on the next scan or button press; **Screen off after** changes
+this. The display may share the PN532's I2C pins. A display on other pins
+needs a second I2C bus, which the ESP32-C3 does not have. Boards with a
+built-in 0.96" OLED (Ideaspark ESP32 and similar) have it on SDA 21 / SCL 22
+at 0x3C.
 
 ## Tag formats
 
