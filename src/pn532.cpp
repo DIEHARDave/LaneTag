@@ -22,8 +22,34 @@ const uint8_t WAKEUP[] = {0x55, 0x55, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 void Pn532::attachI2C(TwoWire &wire, int sda, int scl) {
     bus_ = Pn532Bus::I2C;
     wire_ = &wire;
+    sda_ = sda;
+    scl_ = scl;
     wire_->begin(sda, scl, 100000);
     wire_->setTimeOut(50);
+}
+
+const char *Pn532::stuckLine() {
+    if (bus_ != Pn532Bus::I2C || sda_ < 0 || scl_ < 0) return nullptr;
+    if (digitalRead(sda_) && digitalRead(scl_)) return nullptr;
+    // A device that lost a clock mid-byte holds SDA until it is clocked
+    // through the rest of the byte (the usual nine-pulse bus clear).
+    wire_->end();
+    pinMode(sda_, INPUT_PULLUP);
+    pinMode(scl_, OUTPUT_OPEN_DRAIN);
+    for (int i = 0; i < 9 && !digitalRead(sda_); i++) {
+        digitalWrite(scl_, LOW);
+        delayMicroseconds(5);
+        digitalWrite(scl_, HIGH);
+        delayMicroseconds(5);
+    }
+    pinMode(scl_, INPUT_PULLUP);
+    delayMicroseconds(10);
+    bool sdaHigh = digitalRead(sda_), sclHigh = digitalRead(scl_);
+    wire_->begin(sda_, scl_, 100000);
+    wire_->setTimeOut(50);
+    if (!sclHigh) return "SCL";
+    if (!sdaHigh) return "SDA";
+    return nullptr;
 }
 
 void Pn532::attachUart(HardwareSerial &serial, int rx, int tx, uint32_t baud) {

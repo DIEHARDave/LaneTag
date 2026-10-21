@@ -71,6 +71,18 @@ bool TagReader::poll(Tag &tag) {
     if (!chip_->ready()) {
         if ((int32_t)(millis() - nextInit_) < 0) return false;
         nextInit_ = millis() + REINIT_INTERVAL;
+        // A line held low makes every I2C transfer (and the bus scan below)
+        // wait for its timeout, which would stall the web page for minutes.
+        const char *stuck = pins_.chip == ReaderChip::PN532 ? pn532_.stuckLine() : nullptr;
+        if (stuck) {
+            int pin = strcmp(stuck, "SCL") == 0 ? pins_.scl : pins_.sda;
+            String error = String("I2C ") + stuck + " (GPIO " + String(pin) +
+                           ") is held low, by the reader or a wire touching ground; check the wiring and "
+                           "the mode switches, or use HSU (UART) mode";
+            if (error != error_) log_w("%s", error.c_str());
+            error_ = error;
+            return false;
+        }
         if (!chip_->init()) {
             String error = String("no ") + chip_->chipName() + " answering on " + chip_->busName();
             if (pins_.chip == ReaderChip::RC522) {

@@ -217,9 +217,10 @@ the file is `.pio/build/<board>/firmware.bin`).
    `http://192.168.4.1`). The LED blinks slowly while the setup network is
    up.
 2. Under **Settings**, enter your Wi-Fi network and password and save. The
-   reader restarts and joins it. If it cannot connect, the setup network
-   comes back, and the reader tries your network again every two minutes
-   while nobody is connected to the setup network.
+   reader restarts and joins it. If it cannot connect within 30 seconds,
+   the setup network comes back, and the reader tries your network again
+   every 30 seconds (every two minutes while someone is connected to the
+   setup network, since each try briefly disturbs it).
 3. Open the reader at **`http://zmod-nfc-xxxx.local`** (the name is on the
    Settings tab) or its IP address from your router.
 4. Under **Printers**, add each printer: name, IP address, AD5X or

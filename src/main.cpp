@@ -21,12 +21,17 @@ App app;
 namespace {
 
 constexpr uint32_t POLL_INTERVAL = 250;
-constexpr uint32_t WIFI_WAIT = 20000;
+// Some routers turn away the first joins after a restart (AUTH_EXPIRE,
+// handshake timeouts) and only let one in after 10-20 s.
+constexpr uint32_t WIFI_WAIT = 30000;
 // A scan nobody picked a slot for is dropped after this long.
 constexpr uint32_t SLOT_WAIT = 10 * 60 * 1000;
-// With the setup access point up, the home network is retried this often,
-// only while nobody uses the access point (retries disturb it).
-constexpr uint32_t WIFI_RETRY = 2 * 60 * 1000;
+// With the setup access point up, the home network is retried this often.
+// A retry briefly disturbs the access point, so it waits longer while
+// someone is connected to it, but never stops (a phone left on the setup
+// page would otherwise keep the reader off the network).
+constexpr uint32_t WIFI_RETRY = 30 * 1000;
+constexpr uint32_t WIFI_RETRY_IN_USE = 2 * 60 * 1000;
 uint32_t lastWifiTry = 0;
 
 // The button steps the active printer's slot: ask, 1 ... SLOT_COUNT, ask.
@@ -279,7 +284,7 @@ void loop() {
             app.apMode = false;
             app.wifiError = "";
             app.feedback.setIdleBlink(false);
-        } else if (millis() - lastWifiTry > WIFI_RETRY && WiFi.softAPgetStationNum() == 0) {
+        } else if (millis() - lastWifiTry > (WiFi.softAPgetStationNum() ? WIFI_RETRY_IN_USE : WIFI_RETRY)) {
             lastWifiTry = millis();
             WiFi.begin(app.config.wifiSsid.c_str(), app.config.wifiPass.c_str());
         }
