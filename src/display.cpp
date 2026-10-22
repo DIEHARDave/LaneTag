@@ -278,7 +278,7 @@ void Display::renderSetup() {
     title("Wi-Fi setup");
     u8g2_->setFont(SMALL);
     u8g2_->drawUTF8(0, 25, ("Join " + app.apName).c_str());
-    u8g2_->drawUTF8(0, 34, "password zmodnfc1");
+    u8g2_->drawUTF8(0, 34, "password lanetag1");
     u8g2_->drawUTF8(0, 43, ("open " + WiFi.softAPIP().toString()).c_str());
     if (app.wifiError.length()) wrap(app.wifiError, 44, 2);
 }

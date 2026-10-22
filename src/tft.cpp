@@ -359,7 +359,7 @@ void Tft::drawSetup() {
     lcd.setTextColor(MUTED, BG);
     lcd.drawString("password", 14, 112);
     lcd.setTextColor(TEXT, BG);
-    lcd.drawString("zmodnfc1", 100, 112);
+    lcd.drawString("lanetag1", 100, 112);
     lcd.setTextColor(MUTED, BG);
     lcd.drawString("then open", 14, 136);
     lcd.setTextColor(TEXT, BG);

@@ -1,5 +1,5 @@
-// zmod_esp32-nfc: an ESP32 + PN532, RC522 or PN5180 network NFC reader for
-// Flashforge AD5X and Creator 5 printers.
+// LaneTag: an ESP32 + PN532, RC522 or PN5180 network NFC/RFID filament tag
+// reader for 3D printers (formerly zmod_esp32-nfc).
 //
 // A scanned tag goes to the active printer (chosen on the web page):
 //   zmod_nfc    the whole read goes to the zmod_nfc plugin, which decodes
@@ -95,12 +95,12 @@ String wifiFailure() {
 void startAccessPoint() {
     uint64_t mac = ESP.getEfuseMac();
     char name[32];
-    snprintf(name, sizeof(name), "zmod-nfc-setup-%02x%02x", (unsigned)(mac >> 32) & 0xFF,
+    snprintf(name, sizeof(name), "lanetag-setup-%02x%02x", (unsigned)(mac >> 32) & 0xFF,
              (unsigned)(mac >> 40) & 0xFF);
     app.apName = name;
     WiFi.mode(app.config.wifiSsid.length() ? WIFI_AP_STA : WIFI_AP);
     setWifiPower();
-    WiFi.softAP(name, "zmodnfc1");
+    WiFi.softAP(name, "lanetag1");
     if (app.config.wifiSsid.length()) {
         WiFi.setAutoReconnect(false);
         WiFi.disconnect(false, false);
@@ -161,7 +161,7 @@ void applyWifiPower() {
 #endif
 }
 
-String App::readerName() const { return "zmod_esp32-nfc " + config.hostname; }
+String App::readerName() const { return "LaneTag " + config.hostname; }
 
 void App::record(const PrinterReply &reply) {
     last.ok = reply.ok;
@@ -272,7 +272,7 @@ void setup() {
     Serial.begin(115200);
     delay(200);
     // 1 power-on, 3 software restart, 4 crash, 5-7 watchdog, 9 brownout.
-    log_i("zmod_esp32-nfc %s, reset reason %d", FIRMWARE_VERSION, (int)esp_reset_reason());
+    log_i("LaneTag %s, reset reason %d", FIRMWARE_VERSION, (int)esp_reset_reason());
     loadConfig(app.config);
     app.feedback.begin(app.config.ledPin, app.config.ledActiveLow, app.config.buzzerPin);
     if (app.config.buttonPin >= 0) pinMode(app.config.buttonPin, INPUT_PULLUP);

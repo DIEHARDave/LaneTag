@@ -18,7 +18,7 @@ uint32_t restartAt = 0;
 bool authorized() {
     if (!app.config.uiPassword.length()) return true;
     if (server.authenticate("admin", app.config.uiPassword.c_str())) return true;
-    server.requestAuthentication(BASIC_AUTH, "zmod_esp32-nfc");
+    server.requestAuthentication(BASIC_AUTH, "LaneTag");
     return false;
 }
 

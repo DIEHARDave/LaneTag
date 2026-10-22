@@ -5,7 +5,9 @@
 
 namespace {
 
-const char *const NVS_NAMESPACE = "zmodnfc";
+const char *const NVS_NAMESPACE = "lanetag";
+// Where the settings lived before the rename to LaneTag; moved on first load.
+const char *const OLD_NVS_NAMESPACE = "zmodnfc";
 const char *const NVS_KEY = "config";
 
 // Default pins per chip; all can be changed on the web page. The default
@@ -75,7 +77,7 @@ void setDefaults(Config &config) {
     // The last two bytes of the MAC address, as on the setup access point.
     uint64_t mac = ESP.getEfuseMac();
     char name[24];
-    snprintf(name, sizeof(name), "zmod-nfc-%02x%02x", (unsigned)(mac >> 32) & 0xFF, (unsigned)(mac >> 40) & 0xFF);
+    snprintf(name, sizeof(name), "lanetag-%02x%02x", (unsigned)(mac >> 32) & 0xFF, (unsigned)(mac >> 40) & 0xFF);
     config.hostname = name;
 }
 
@@ -292,11 +294,26 @@ String slotName(const PrinterConfig &printer, int slot) {
 
 void loadConfig(Config &config) {
     setDefaults(config);
+    String text;
     Preferences prefs;
-    if (!prefs.begin(NVS_NAMESPACE, true)) return;
-    String text = prefs.getString(NVS_KEY, "");
-    prefs.end();
-    if (!text.length()) return;
+    if (prefs.begin(NVS_NAMESPACE, true)) {
+        text = prefs.getString(NVS_KEY, "");
+        prefs.end();
+    }
+    if (!text.length()) {
+        // Settings saved by zmod_esp32-nfc firmware: copy them over once.
+        if (!prefs.begin(OLD_NVS_NAMESPACE, true)) return;
+        text = prefs.getString(NVS_KEY, "");
+        prefs.end();
+        if (!text.length()) return;
+        bool moved = prefs.begin(NVS_NAMESPACE, false) && prefs.putString(NVS_KEY, text);
+        prefs.end();
+        if (moved && prefs.begin(OLD_NVS_NAMESPACE, false)) {
+            prefs.clear();
+            prefs.end();
+        }
+        log_w("settings %s from the old \"%s\" storage", moved ? "moved" : "read", OLD_NVS_NAMESPACE);
+    }
     JsonDocument doc;
     if (deserializeJson(doc, text)) {
         log_w("stored settings are not valid JSON; using defaults");

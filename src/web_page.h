@@ -8,7 +8,7 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>zmod NFC reader</title>
+<title>LaneTag</title>
 <style>
 :root{--bg:#f4f5f7;--card:#fff;--text:#1d2129;--muted:#5f6673;--line:#dde0e5;--accent:#2563eb;--ok:#15803d;--bad:#b91c1c;--warn:#a16207;--chip:#eef0f3}
 @media (prefers-color-scheme:dark){:root{--bg:#14161a;--card:#1d2026;--text:#e8eaed;--muted:#9aa1ad;--line:#2f333b;--accent:#5b8def;--ok:#4ade80;--bad:#f87171;--warn:#facc15;--chip:#2a2e36}}
@@ -57,7 +57,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
 </head>
 <body>
 <header>
-  <h1 id="device">zmod NFC reader</h1>
+  <h1 id="device">LaneTag</h1>
   <span class="pill" id="wifiPill">Wi-Fi</span>
   <span class="pill" id="readerPill">Reader</span>
 </header>
@@ -208,7 +208,7 @@ function renderHeader() {
   r.className = "pill " + (status.reader.ok ? "ok" : "bad");
   const ap = $("apBanner");
   ap.classList.toggle("hidden", !status.ap);
-  if (status.ap) ap.textContent = `Setup mode: this device is the "${status.ap_name}" Wi-Fi network (password zmodnfc1). Enter your Wi-Fi network under Settings.` +
+  if (status.ap) ap.textContent = `Setup mode: this device is the "${status.ap_name}" Wi-Fi network (password lanetag1). Enter your Wi-Fi network under Settings.` +
     (status.wifi_error ? ` Could not join ${status.ssid}: ${status.wifi_error}.` : "");
   $("version").textContent = "Version " + status.version;
 }

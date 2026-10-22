@@ -1,8 +1,13 @@
-# zmod_esp32-nfc
+# LaneTag
 
-A Wi-Fi NFC/RFID filament tag reader for the **Flashforge AD5X** and
-**Flashforge Creator 5**, built from an **ESP32** and a **PN532**, **RC522**
-or **PN5180** module.
+A Wi-Fi NFC/RFID filament tag reader for 3D printers, built from an
+**ESP32** and a **PN532**, **RC522** or **PN5180** module. Printers
+supported today: the **Flashforge AD5X** and **Flashforge Creator 5**.
+
+> Formerly **zmod_esp32-nfc**. Boards running that firmware keep their
+> settings when updated to LaneTag (see [Updating from
+> zmod_esp32-nfc](#updating-from-zmod_esp32-nfc)).
+
 Hold a spool's tag to the reader and the printer's slot gets the spool's
 material and colour. One reader can serve several printers, running stock
 firmware or [Zmod](https://github.com/ghzserg/zmod), and needs no USB port on
@@ -259,8 +264,8 @@ the file is `.pio/build/<board>/firmware.bin`).
 
 ## Setup
 
-1. On first start the reader opens a Wi-Fi network **`zmod-nfc-setup-xxxx`**
-   (password **`zmodnfc1`**). Join it; the setup page opens (or browse to
+1. On first start the reader opens a Wi-Fi network **`lanetag-setup-xxxx`**
+   (password **`lanetag1`**). Join it; the setup page opens (or browse to
    `http://192.168.4.1`). The LED blinks slowly while the setup network is
    up.
 2. Under **Settings**, enter your Wi-Fi network and password and save. The
@@ -269,7 +274,7 @@ the file is `.pio/build/<board>/firmware.bin`).
    every 30 seconds (every two minutes while someone is connected to the
    setup network, since each try briefly disturbs it). The same happens
    when the reader loses your network for a minute while running.
-3. Open the reader at **`http://zmod-nfc-xxxx.local`** (the name is on the
+3. Open the reader at **`http://lanetag-xxxx.local`** (the name is on the
    Settings tab) or its IP address from your router.
 4. Under **Printers**, add each printer: name, IP address, AD5X or
    Creator 5, and the method. **Test** checks the connection.
@@ -288,6 +293,15 @@ the file is `.pio/build/<board>/firmware.bin`).
 
 You can also set a password for the web page (user `admin`) under
 **Settings**.
+
+### Updating from zmod_esp32-nfc
+
+Upload the LaneTag firmware under **Settings > Firmware** as usual. On its
+first start it moves the saved settings (Wi-Fi, printers, pins, display)
+over, so nothing needs setting up again. The reader keeps its old
+`zmod-nfc-xxxx` hostname until you change it under **Settings**; new
+readers are called `lanetag-xxxx`, and their setup network uses the
+password `lanetag1`.
 
 ## Using it
 

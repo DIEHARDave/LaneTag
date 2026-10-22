@@ -46,7 +46,7 @@ struct PrinterConfig {
 };
 
 struct Config {
-    String hostname = "zmod-nfc";
+    String hostname = "lanetag";
     String wifiSsid;
     String wifiPass;
     String uiPassword;          // empty: the web page is open
