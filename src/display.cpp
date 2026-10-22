@@ -111,9 +111,22 @@ void Display::begin(const DisplayConfig &config, const ReaderPins &reader) {
     }
     bus->beginTransmission(config.address);
     if (bus->endTransmission() != 0) {
-        char text[96];
-        snprintf(text, sizeof(text), "no display answering at 0x%02X (SDA %d, SCL %d)", config.address,
-                 config.sda, config.scl);
+        char text[160];
+        int n = snprintf(text, sizeof(text), "no display answering at 0x%02X (SDA %d, SCL %d)", config.address,
+                         config.sda, config.scl);
+        // What does answer, to tell a wrong address from a wiring fault.
+        String found;
+        for (uint8_t address = 0x08; address <= 0x77; address++) {
+            bus->beginTransmission(address);
+            if (bus->endTransmission() == 0) found += (found.length() ? ", 0x" : "0x") + String(address, HEX);
+        }
+        if (found.length())
+            snprintf(text + n, sizeof(text) - n, "; found %s on these pins", found.c_str());
+        else if (digitalRead(config.sda) == LOW || digitalRead(config.scl) == LOW)
+            snprintf(text + n, sizeof(text) - n, "; %s is held low (wiring or power)",
+                     digitalRead(config.sda) == LOW ? "SDA" : "SCL");
+        else
+            snprintf(text + n, sizeof(text) - n, "; nothing answers on these pins (check VCC, GND, SDA/SCL swap)");
         error_ = text;
         log_w("%s", text);
         return;
