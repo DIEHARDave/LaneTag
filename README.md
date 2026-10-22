@@ -61,8 +61,8 @@ printer is given a fixed slot on the reader (see
 > the **Zmod basic** method. The PN532 works over I2C (ESP32-C3) and HSU
 > (classic ESP32), and the RC522 read tags on an ESP32-C3. On a **CYD**
 > (ESP32-2432S028, ST7789 version) with a PN532 over HSU, scans reach an
-> AD5X with zmod_nfc and the printer and slot buttons work; putting a
-> waiting scan into a slot from its touch screen is not yet tried. **PN5180
+> AD5X with zmod_nfc, and its printer, fixed-slot and "put the waiting scan
+> here" touch buttons all work. **PN5180
 > support has not been run on hardware yet** (it builds; its driver is
 > written from the NXP datasheet, its command layer follows zmod_nfc's). The OpenPrintTag decoder gives the same results as
 > zmod_nfc's on its six OpenPrintTag test dumps. Reports are welcome.
