@@ -97,7 +97,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
 <section id="printers">
   <div class="card">
     <h2>Printers</h2>
-    <div class="hint">Pick a method per printer. <b>zmod_nfc</b> sends the whole tag to the zmod_nfc plugin, which shows its slot popup, matches Spoolman and fills lane data. <b>Zmod basic</b> sets slot colour and material through Moonraker (no plugin needed). <b>Stock</b> uses Flashforge's local API: slot colour and material only; it needs the printer's serial number and check code. A <b>Snapmaker U1</b> with paxx12's Extended firmware gets each scan as its head's own RFID read, and its SpoolLink matches the tag in Spoolman; each U1 reader is fixed to one head.</div>
+    <div class="hint">Pick a method per printer. <b>zmod_nfc</b> sends the whole tag to the zmod_nfc plugin, which shows its slot popup, matches Spoolman and fills lane data. <b>Zmod basic</b> sets slot color and material through Moonraker (no plugin needed). <b>Stock</b> uses Flashforge's local API: slot color and material only; it needs the printer's serial number and check code. A <b>Snapmaker U1</b> with paxx12's Extended firmware gets each scan as its head's own RFID read, and its SpoolLink matches the tag in Spoolman; each U1 reader is fixed to one head.</div>
     <div id="printerList"></div>
     <div class="actions">
       <button class="btn" id="addPrinter">Add printer</button>

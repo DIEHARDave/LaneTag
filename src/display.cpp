@@ -227,7 +227,7 @@ void Display::footer() {
     u8g2_->drawUTF8(0, 63, name.c_str());
 }
 
-// One line in the top 16 rows (yellow on two-colour OLEDs), in the largest
+// One line in the top 16 rows (yellow on two-color OLEDs), in the largest
 // font it fits.
 void Display::title(const String &text) {
     for (const uint8_t *font : {LARGE, TITLE_SMALLER, MEDIUM}) {
@@ -313,7 +313,7 @@ void Display::renderIdle() {
 // The filament of the last scan and how it went:
 //   PLA Silk                 (material; the yellow band)
 //   Polymaker        #19     (brand, Spoolman spool)
-//   orange FF8000  220C      (colour, nozzle)
+//   orange FF8000  220C      (color, nozzle)
 //   Assigned to ...          (status, small)
 //   -----------------
 //   AD5X-1          Slot 1   (printer and slot)

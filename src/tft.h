@@ -1,7 +1,7 @@
 // The 2.8" 320x240 touch screen of the ESP32-2432S028 ("Cheap Yellow
 // Display"): ILI9341 (or ST7789 on the two-USB version) on HSPI, XPT2046
 // touch on its own pins. Besides what the OLED shows, it has the filament's
-// colour and buttons: the header picks the printer, the bottom row the
+// color and buttons: the header picks the printer, the bottom row the
 // fixed slot, and a scan waiting for a slot can be put into one here.
 #pragma once
 

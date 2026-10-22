@@ -64,7 +64,7 @@ String base64(const uint8_t *data, size_t len) {
     return String((const char *)out.data(), outLen);
 }
 
-// --- Materials and colours -----------------------------------------------------
+// --- Materials and colors -----------------------------------------------------
 
 String upper(String text) {
     text.trim();
@@ -106,7 +106,7 @@ void rgbOf(uint32_t color, long &r, long &g, long &b) {
 }
 
 // Closest palette entry by the "redmean" weighted RGB distance (as zmod_nfc
-// and zmod_afclite snap colours to Zmod's palette).
+// and zmod_afclite snap colors to Zmod's palette).
 String nearestPalette(uint32_t color, JsonArrayConst palette) {
     String best;
     double bestDistance = 1e18;
@@ -130,8 +130,8 @@ String nearestPalette(uint32_t color, JsonArrayConst palette) {
     return best;
 }
 
-// The stock screens draw a slot's colour only when it is one of their 24
-// palette entries, byte for byte as "#RRGGBB"; any other colour is stored
+// The stock screens draw a slot's color only when it is one of their 24
+// palette entries, byte for byte as "#RRGGBB"; any other color is stored
 // but not shown. Each model has its own palette.
 constexpr size_t PALETTE_SIZE = 24;
 const char *const C5_PALETTE[PALETTE_SIZE] = {
@@ -165,7 +165,7 @@ void toLab(uint32_t color, double lab[3]) {
     lab[2] = 200 * (f(y) - f(z));
 }
 
-// CIEDE2000 colour difference of two CIELAB colours. Plain CIELAB distance
+// CIEDE2000 color difference of two CIELAB colors. Plain CIELAB distance
 // sends saturated blues to purple (#0022FF became "bright purple" on the
 // AD5X palette); CIEDE2000 corrects the hue in that region.
 double deltaE2000(const double lab1[3], const double lab2[3]) {
@@ -504,7 +504,7 @@ PrinterReply basicAssign(const PrinterConfig &printer, const Tag &tag, const Fil
     if (palette.size()) {
         String snapped = nearestPalette(strtol(color.c_str(), nullptr, 16), palette);
         if (snapped.length() && snapped != color) {
-            notes += "#" + color + " stored as palette colour #" + snapped + ". ";
+            notes += "#" + color + " stored as palette color #" + snapped + ". ";
             color = snapped;
         }
     }
@@ -612,7 +612,7 @@ PrinterReply stockAssign(const PrinterConfig &printer, const Filament &f, int sl
     reply.ok = true;
     reply.message = "Slot " + String(slot) + " is now " + material + " " + rgb;
     if (f.color >= 0 && rgb.substring(1) != f.colorHex())
-        reply.message += " (the screen's closest colour to #" + f.colorHex() + ")";
+        reply.message += " (the screen's closest color to #" + f.colorHex() + ")";
     return reply;
 }
 
@@ -656,7 +656,7 @@ bool u1HasSpoolLink(const PrinterConfig &printer) {
     return false;
 }
 
-// What a head holds, from print_task_config: "Sunlu PLA Matte" and its colour.
+// What a head holds, from print_task_config: "Sunlu PLA Matte" and its color.
 SlotInfo u1Head(const JsonDocument &status, int head) {
     JsonObjectConst ptc = status["print_task_config"];
     SlotInfo info;

@@ -21,8 +21,8 @@ struct DisplayConfig {
 };
 
 const char *displayTypeName(DisplayType type);
-// A colour name for the screen: the nearest of a few common filament
-// colours.
+// A color name for the screen: the nearest of a few common filament
+// colors.
 const char *colorName(uint32_t color);
 
 class Display {

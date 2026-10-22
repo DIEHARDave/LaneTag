@@ -11,7 +11,7 @@ the **Snapmaker U1** with paxx12's
 > zmod_esp32-nfc](#updating-from-zmod_esp32-nfc)).
 
 Hold a spool's tag to the reader and the printer's slot gets the spool's
-material and colour. One reader can serve several printers, running stock
+material and color. One reader can serve several printers, running stock
 firmware or [Zmod](https://github.com/ghzserg/zmod), and needs no USB port on
 the printer. Everything is set up on the reader's own web page: Wi-Fi,
 printers and their IP addresses, and how each printer is reached.
@@ -22,14 +22,14 @@ printers and their IP addresses, and how each printer is reached.
 > no modding at all.** Nothing is installed on the printer: the reader uses
 > the local network API that Flashforge's own firmware already has (the one
 > OrcaSlicer and FlashPrint use). On a stock printer a scan sets the
-> **slot's material and colour** - that is all the stock API offers.
+> **slot's material and color** - that is all the stock API offers.
 
 Everything beyond that needs [**Zmod**](https://github.com/ghzserg/zmod).
 The two plugins below are **optional extras, not requirements**:
 
 | Printer runs | What a scan gets you |
 |--------------|----------------------|
-| **Stock Flashforge firmware** (no mods) | Slot material and colour. The colour is matched to the closest one the stock screen can show. |
+| **Stock Flashforge firmware** (no mods) | Slot material and color. The color is matched to the closest one the stock screen can show. |
 | **Zmod** | The same, through Moonraker, plus the slot's **lane data** for OrcaSlicer. No plugin needed ("Zmod basic"). |
 | **Zmod + [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc)** (optional plugin) | The full integration: every tag format decoded on the printer, **Spoolman** spool matching, the slot **popup on the printer's screen** (or just insert the filament), and lane data with the spool's details - the same as a USB reader plugged into the printer. |
 | **+ [zmod_afclite](https://github.com/DIEHARDave/zmod_afclite)** (optional plugin, with zmod_nfc) | Each IFS slot (or Creator 5 toolhead) keeps track of its own Spoolman spool, and Moonraker's active spool follows the one in use. zmod_nfc works without it. |
@@ -49,7 +49,7 @@ printer is given a fixed slot on the reader (see
       Zmod + zmod_nfc      Zmod basic     Stock firmware
       Moonraker ──► plugin Moonraker      Flashforge local API
       decode, Spoolman,    CHANGE_ZCOLOR  msConfig_cmd
-      slot popup on the    + lane_data    (material + colour)
+      slot popup on the    + lane_data    (material + color)
       printer, lane_data
 ```
 
@@ -81,8 +81,8 @@ Each printer on the reader's list uses one of these methods:
 | Method | Printer runs | What a scan does |
 |--------|--------------|------------------|
 | **Zmod + zmod_nfc** | Zmod with the [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc) plugin | The **whole tag read** goes through Moonraker to the plugin (no extra port or service on the printer), which handles it exactly like a tag on a USB reader plugged into the printer: it decodes every format zmod_nfc knows, looks the spool up in **Spoolman** (spool ID on the tag, or the tag's UID), shows its **slot popup on the printer's screen** (or takes the slot you insert filament into), sets the slot through zmod_afclite's `SET_SPOOL_ID` or Zmod's `CHANGE_ZCOLOR`, and fills in Moonraker's **lane_data** for OrcaSlicer. The reader's web page can pick the slot too. |
-| **Zmod basic** | Zmod, no plugin | Material and colour go to the slot through Moonraker (`CHANGE_ZCOLOR`), snapped to Zmod's material list and colour palette, and the slot's **lane_data** entry gets the material, colour, vendor, temperatures and the tag's Spoolman spool ID if it carries one. No Spoolman lookup. |
-| **Stock firmware** | Flashforge firmware | Material and colour through the printer's local API (`msConfig_cmd` on port 8898) - that is all the stock API offers. Needs the printer's **serial number** and **check code**. The stock screens can only draw their own 24 colours (a different set on each model), so the colour is snapped to the closest one (CIEDE2000), and on the Creator 5 the material to its list. |
+| **Zmod basic** | Zmod, no plugin | Material and color go to the slot through Moonraker (`CHANGE_ZCOLOR`), snapped to Zmod's material list and color palette, and the slot's **lane_data** entry gets the material, color, vendor, temperatures and the tag's Spoolman spool ID if it carries one. No Spoolman lookup. |
+| **Stock firmware** | Flashforge firmware | Material and color through the printer's local API (`msConfig_cmd` on port 8898) - that is all the stock API offers. Needs the printer's **serial number** and **check code**. The stock screens can only draw their own 24 colors (a different set on each model), so the color is snapped to the closest one (CIEDE2000), and on the Creator 5 the material to its list. |
 | **Extended firmware** | Snapmaker U1 with paxx12's [Extended firmware](https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware) | The scan reaches the head **as if the head's own RFID reader had read it**: the reader decodes the tag and posts it to Klipper's `filament_detect/set` endpoint through Moonraker, as the firmware's OpenRFID does (vendor "Generic" unless it is Snapmaker filament, so the slicer finds a profile). The screen, the slicer and the firmware's **SpoolLink** see it like any other read: with Spoolman set up in the firmware, SpoolLink looks the tag's UID up in Spoolman and loads that spool. A tag naming a Spoolman spool ID is bound to it with `SET_SPOOL_ID`; a tag with no filament data works when its UID is already bound to a spool. Nothing to install. Heads are not changed while the printer prints. Each reader is **always fixed to one head** (no "Ask"). |
 
 > **Stock firmware and Zmod basic: give each printer a fixed slot.** Only
@@ -120,7 +120,7 @@ Each printer on the reader's list uses one of these methods:
   [The display](#the-display).
 * Or an **ESP32-2432S028** ("Cheap Yellow Display", CYD): a classic ESP32
   with a 2.8" 320x240 touch screen on the board. It shows the filament's
-  colour and has touch buttons for the printer and slot, see
+  color and has touch buttons for the printer and slot, see
   [The CYD touch screen](#the-cyd-touch-screen). Wiring:
   [CYD](#cyd-esp32-2432s028).
 
@@ -312,7 +312,7 @@ password `lanetag1`.
 
 ## Using it
 
-The **Scan** tab shows the last tag: its colour, what it decoded to and what
+The **Scan** tab shows the last tag: its color, what it decoded to and what
 the printer did, plus the target printer's slots.
 
 * **Zmod + zmod_nfc:** the printer's screen asks which slot the spool goes
@@ -340,7 +340,7 @@ each to its own slot, and a spool is assigned just by setting it on its
 slot's reader.
 
 With zmod_nfc, everything else still happens: the Spoolman lookup, lane
-data, and Zmod's colour popup is skipped when you then insert the filament.
+data, and Zmod's color popup is skipped when you then insert the filament.
 A reader can have a fixed slot on one printer and ask on another.
 
 The LED (and buzzer) signal: a short blink when a tag is read, a long one
@@ -364,15 +364,15 @@ the board resets or powers up: that starts the ESP32's flash mode.
 
 ### The display
 
-![The reader on an Ideaspark ESP32 with its built-in two-colour 0.96" OLED, after a Snapmaker PLA SnapSpeed spool went into slot 1 of an AD5X as Spoolman spool 14](docs/oled-display.jpg)
+![The reader on an Ideaspark ESP32 with its built-in two-color 0.96" OLED, after a Snapmaker PLA SnapSpeed spool went into slot 1 of an AD5X as Spoolman spool 14](docs/oled-display.jpg)
 
 With an OLED set up under **Settings > Display**, the reader shows:
 
 * at the bottom, the active printer and its slot (`Ask`, `Slot 1`-`4` on the AD5X, `T0`-`T3`
   on the Creator 5, `Head 1`-`4` on the Snapmaker U1); pressing the slot button shows the slot in large type
 * after a scan, the filament it found: the material in the top 16 rows (the
-  yellow band on two-colour OLEDs), brand, the Spoolman spool
-  (`#19`), a colour name with its hex value (the screen is monochrome) and
+  yellow band on two-color OLEDs), brand, the Spoolman spool
+  (`#19`), a color name with its hex value (the screen is monochrome) and
   the nozzle temperature, then what happened (sent, assigned, pick the slot
   on the printer, or the error). Tags only the zmod_nfc plugin can decode show
   the printer's name for the spool.
@@ -387,7 +387,7 @@ have; with the PN532 on HSU (or an RC522/PN5180) the display can go on any
 two free pins. Boards with a built-in 0.96" OLED (Ideaspark ESP32 and
 similar) have it on SDA 21 / SCL 22 at 0x3C.
 
-![An ESP32-C3 SuperMini with a PN532 (HSU) and a separate 0.96" two-colour OLED on SDA 6 / SCL 7, after a Snapmaker PLA SnapSpeed spool went into head 1 of a Snapmaker U1 as Spoolman spool 14](docs/u1-c3-oled.jpg)
+![An ESP32-C3 SuperMini with a PN532 (HSU) and a separate 0.96" two-color OLED on SDA 6 / SCL 7, after a Snapmaker PLA SnapSpeed spool went into head 1 of a Snapmaker U1 as Spoolman spool 14](docs/u1-c3-oled.jpg)
 
 If the display stays dark, **Settings** shows why: which addresses answer on
 its pins, whether SDA or SCL is held low, or that nothing answers at all
@@ -405,8 +405,8 @@ shows:
 
 * at the top, the active printer: **tap it for the next printer** (the
   triangle shows when there is more than one), with the reader's IP address
-* after a scan, a swatch in the filament's colour, the material, brand, the
-  Spoolman spool, colour name and hex value, the nozzle temperature and
+* after a scan, a swatch in the filament's color, the material, brand, the
+  Spoolman spool, color name and hex value, the nozzle temperature and
   what happened
 * when a scan waits for its slot, four buttons: **tap one to put the scan
   there**, instead of choosing on the printer or the web page
@@ -442,7 +442,7 @@ zmod_nfc supports works, including ones the reader does not decode itself.
   expose the reader or the printers to the internet. Set a page password if
   others share your network.
 * A tag that only names a Spoolman spool (a Spoolman QR/NFC link) has no
-  material or colour of its own: use the zmod_nfc method, which looks it up.
+  material or color of its own: use the zmod_nfc method, which looks it up.
 * The reader sends a tag once; take it away and back to send it again, or
   press **Read the tag again**.
 

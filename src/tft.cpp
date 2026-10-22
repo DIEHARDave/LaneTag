@@ -400,7 +400,7 @@ void Tft::drawIdle() {
 }
 
 // The last scan:
-//   [colour]  PLA Silk                  #14
+//   [color]  PLA Silk                  #14
 //   [swatch]  Polymaker
 //             orange  #FF8000  220 C
 //   Status, or the slots to put it in.
@@ -423,7 +423,7 @@ void Tft::drawScan() {
     }
     if (!name.length()) name = last.printerTitle;
 
-    // Colour swatch.
+    // Color swatch.
     const int sx = 10, sy = HEADER + 10, ss = 76;
     if (f.color >= 0) {
         lcd.fillRoundRect(sx, sy, ss, ss, 8, (uint32_t)f.color);

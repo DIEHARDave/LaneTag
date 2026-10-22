@@ -68,7 +68,7 @@ struct Filament {
     bool valid() const { return format.length() > 0; }
     bool hasFilamentData() const { return material.length() > 0 || color >= 0; }
     int nozzleTemp() const;
-    String colorHex() const;     // "RRGGBB", or "" without a colour
+    String colorHex() const;     // "RRGGBB", or "" without a color
     String title() const;        // brand, material and modifiers
 };
 

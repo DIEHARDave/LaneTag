@@ -4,9 +4,9 @@
 // A scanned tag goes to the active printer (chosen on the web page):
 //   zmod_nfc    the whole read goes to the zmod_nfc plugin, which decodes
 //               it, looks it up in Spoolman and shows its slot prompt
-//   zmod_basic  material and colour go to Zmod through Moonraker, plus
+//   zmod_basic  material and color go to Zmod through Moonraker, plus
 //               Moonraker's lane_data
-//   stock       material and colour go to the stock firmware's local API
+//   stock       material and color go to the stock firmware's local API
 //   snapmaker   the Snapmaker U1 (Extended firmware) gets the read as its
 //               head's own RFID read; SpoolLink matches it in Spoolman
 // For zmod_basic and stock the slot is picked on the web page, or set once

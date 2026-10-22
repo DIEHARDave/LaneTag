@@ -13,10 +13,10 @@ enum class Method : uint8_t {
                     // Moonraker to the plugin's endpoint, which decodes it, looks it
                     // up in Spoolman and shows its slot prompt, like a USB reader on
                     // the printer
-    ZmodBasic = 1,  // Zmod without the plugin: colour and material through
+    ZmodBasic = 1,  // Zmod without the plugin: color and material through
                     // Moonraker (CHANGE_ZCOLOR) and Moonraker's lane_data
     Stock = 2,      // stock Flashforge firmware: the local API's msConfig_cmd
-                    // (slot material and colour only)
+                    // (slot material and color only)
     Snapmaker = 3,  // Snapmaker U1 with paxx12's Extended firmware: the read
                     // goes to the head as if its own RFID reader had read it
                     // (Moonraker's filament_detect/set, as OpenRFID does), and
