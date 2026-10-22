@@ -305,6 +305,8 @@ the board resets or powers up: that starts the ESP32's flash mode.
 
 ### The display
 
+![The reader on an Ideaspark ESP32 with its built-in two-colour 0.96" OLED, after a Snapmaker PLA SnapSpeed spool went into slot 1 of an AD5X as Spoolman spool 14](docs/oled-display.jpg)
+
 With an OLED set up under **Settings > Display**, the reader shows:
 
 * at the bottom, the active printer and its slot (`Ask`, `Slot 1`-`4` on the AD5X, `T0`-`T3`
