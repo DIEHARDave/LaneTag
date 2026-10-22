@@ -6,6 +6,7 @@
 #include <soc/soc_caps.h>
 
 #include "app.h"
+#include "tft.h"
 
 namespace {
 
@@ -37,8 +38,6 @@ uint8_t byteCallback(u8x8_t *u8x8, uint8_t msg, uint8_t count, void *data) {
     return 1;
 }
 
-// A colour name for a monochrome screen: the nearest of a few common
-// filament colours by the "redmean" distance.
 struct NamedColor { const char *name; uint32_t rgb; };
 const NamedColor COLOR_NAMES[] = {
     {"white", 0xFFFFFF}, {"black", 0x000000}, {"grey", 0x808080}, {"light grey", 0xC0C0C0},
@@ -49,6 +48,9 @@ const NamedColor COLOR_NAMES[] = {
     {"purple", 0x7030B0}, {"violet", 0xB060F0}, {"magenta", 0xF030C0}, {"pink", 0xF8A0C0},
 };
 
+}  // namespace
+
+// The nearest by the "redmean" distance.
 const char *colorName(uint32_t color) {
     long r1 = (color >> 16) & 0xFF, g1 = (color >> 8) & 0xFF, b1 = color & 0xFF;
     const char *best = "";
@@ -66,24 +68,27 @@ const char *colorName(uint32_t color) {
     return best;
 }
 
-String slotName(const PrinterConfig &printer, int slot) {
-    if (slot <= 0) return "Ask";
-    // As the printers name them: toolheads T0-T3, IFS slots 1-4.
-    return printer.model == Model::Creator5 ? "T" + String(slot - 1) : "Slot " + String(slot);
-}
-
-}  // namespace
-
 const char *displayTypeName(DisplayType type) {
     switch (type) {
     case DisplayType::SSD1306: return "ssd1306";
     case DisplayType::SH1106: return "sh1106";
+    case DisplayType::CydIli9341: return "cyd";
+    case DisplayType::CydSt7789: return "cyd-st7789";
     default: return "none";
     }
 }
 
 void Display::begin(const DisplayConfig &config, const ReaderPins &reader) {
     if (config.type == DisplayType::None) return;
+    if (isTft(config.type)) {
+#ifdef HAS_TFT
+        tft_ = new Tft();
+        tft_->begin(config);
+#else
+        error_ = "this firmware has no touch screen support";
+#endif
+        return;
+    }
     if (config.sda < 0 || config.scl < 0) {
         error_ = "the display needs its SDA and SCL pins";
         return;
@@ -128,13 +133,26 @@ void Display::begin(const DisplayConfig &config, const ReaderPins &reader) {
     draw(true);
 }
 
+void Display::refresh() {
+#ifdef HAS_TFT
+    if (tft_) return tft_->refresh();
+#endif
+    draw(true);
+}
+
 void Display::showSlot() {
+#ifdef HAS_TFT
+    if (tft_) return tft_->showSlot();
+#endif
     slotUntil_ = millis() + SLOT_SHOWN;
     wake();
     draw(true);
 }
 
 void Display::wake() {
+#ifdef HAS_TFT
+    if (tft_) return tft_->wake();
+#endif
     changedAt_ = millis();
     if (asleep_ && u8g2_) {
         u8g2_->setPowerSave(0);
@@ -143,6 +161,9 @@ void Display::wake() {
 }
 
 void Display::loop() {
+#ifdef HAS_TFT
+    if (tft_) return tft_->loop();
+#endif
     if (!u8g2_ || millis() - lastDraw_ < DRAW_INTERVAL) return;
     draw(false);
 }

@@ -59,7 +59,10 @@ printer is given a fixed slot on the reader (see
 > Bambu, Creality and Snapmaker keys). Not yet tried: Bambu and Creality
 > tags, a factory-fresh printer, the stock method on the Creator 5, and
 > the **Zmod basic** method. The PN532 works over I2C (ESP32-C3) and HSU
-> (classic ESP32), and the RC522 read tags on an ESP32-C3. **PN5180
+> (classic ESP32), and the RC522 read tags on an ESP32-C3. On a **CYD**
+> (ESP32-2432S028, ST7789 version) with a PN532 over HSU, scans reach an
+> AD5X with zmod_nfc and the printer and slot buttons work; putting a
+> waiting scan into a slot from its touch screen is not yet tried. **PN5180
 > support has not been run on hardware yet** (it builds; its driver is
 > written from the NXP datasheet, its command layer follows zmod_nfc's). The OpenPrintTag decoder gives the same results as
 > zmod_nfc's on its six OpenPrintTag test dumps. Reports are welcome.
@@ -107,6 +110,11 @@ Each printer on the reader's list uses one of three methods:
   [Choosing the slot with the button](#choosing-the-slot-with-the-button)).
 * Optional: a 128x64 I2C OLED (SSD1306 0.96" or SH1106 1.3"), see
   [The display](#the-display).
+* Or an **ESP32-2432S028** ("Cheap Yellow Display", CYD): a classic ESP32
+  with a 2.8" 320x240 touch screen on the board. It shows the filament's
+  colour and has touch buttons for the printer and slot, see
+  [The CYD touch screen](#the-cyd-touch-screen). Wiring:
+  [CYD](#cyd-esp32-2432s028).
 
 ### Wiring
 
@@ -208,6 +216,25 @@ The PN5180 looks for an ISO 14443A tag and an ISO 15693 tag in turn, so a
 tag can take a moment longer to be noticed than on the PN532. One tag at a
 time, as with the RC522.
 
+#### CYD (ESP32-2432S028)
+
+The screen, touch controller and SD slot use most of the CYD's pins. A
+PN532 in **HSU** mode (both switches OFF) goes on the 4-pin **CN1**
+connector, which has everything it needs. These are the defaults of the
+`cyd` build:
+
+```
+PN532          CYD CN1
+ VCC  ──────── 3.3V
+ GND  ──────── GND
+ TXD  ──────── IO27 (RX)
+ RXD  ──────── IO22 (TX)
+```
+
+The LED is the blue part of the CYD's RGB LED (GPIO 17), and the BOOT
+button steps the slot. Tested with a PN532 V3 on a CYD with a USB-C port
+and an ST7789 panel.
+
 ## Install
 
 Build and flash with [PlatformIO](https://platformio.org/) (the VS Code
@@ -217,8 +244,15 @@ extension, or `pip install platformio`):
 pio run -e esp32dev -t upload      # classic ESP32
 pio run -e esp32-s3 -t upload      # ESP32-S3
 pio run -e esp32-c3 -t upload      # ESP32-C3
+pio run -e cyd -t upload           # ESP32-2432S028 (CYD)
 pio device monitor                 # log output
 ```
+
+The `cyd` build is the classic ESP32 firmware with the CYD's screen, PN532
+pins and LED as defaults; the `esp32dev` build can drive the CYD screen too
+once it is picked under **Settings > Display**. If an upload stops at
+"Connecting..." or reports "Wrong boot mode", hold the **BOOT** button until
+the upload starts (the tested CYD did not enter flash mode by itself).
 
 Later updates can be uploaded from the web page (**Settings > Firmware**,
 the file is `.pio/build/<board>/firmware.bin`).
@@ -233,7 +267,8 @@ the file is `.pio/build/<board>/firmware.bin`).
    reader restarts and joins it. If it cannot connect within 30 seconds,
    the setup network comes back, and the reader tries your network again
    every 30 seconds (every two minutes while someone is connected to the
-   setup network, since each try briefly disturbs it).
+   setup network, since each try briefly disturbs it). The same happens
+   when the reader loses your network for a minute while running.
 3. Open the reader at **`http://zmod-nfc-xxxx.local`** (the name is on the
    Settings tab) or its IP address from your router.
 4. Under **Printers**, add each printer: name, IP address, AD5X or
@@ -326,6 +361,30 @@ this. The display may share the PN532's I2C pins. A display on other pins
 needs a second I2C bus, which the ESP32-C3 does not have. Boards with a
 built-in 0.96" OLED (Ideaspark ESP32 and similar) have it on SDA 21 / SCL 22
 at 0x3C.
+
+### The CYD touch screen
+
+![The reader on a CYD with a PN532 in HSU mode, after a Snapmaker PLA SnapSpeed spool went into slot 4 of an AD5X as Spoolman spool 14](docs/cyd-display.jpg)
+
+On an ESP32-2432S028, choose **CYD 2.8" touch** under **Settings >
+Display** (the `cyd` build starts with it). There are two versions of the
+board: if the picture is mirrored or only fills a square, pick **CYD 2.8"
+touch, ST7789** instead (usually the version with a USB-C port). The screen
+shows:
+
+* at the top, the active printer: **tap it for the next printer** (the
+  triangle shows when there is more than one), with the reader's IP address
+* after a scan, a swatch in the filament's colour, the material, brand, the
+  Spoolman spool, colour name and hex value, the nozzle temperature and
+  what happened
+* when a scan waits for its slot, four buttons: **tap one to put the scan
+  there**, instead of choosing on the printer or the web page
+* at the bottom, the reader's fixed slot: **tap Ask, 1-4 (T0-T3 on the
+  Creator 5)** to change it; the same setting as the BOOT button and **Slot
+  for this reader**, saved at once
+
+The backlight turns off after **Screen off after** minutes without a
+change; a touch wakes it (that touch does nothing else).
 
 ## Tag formats
 

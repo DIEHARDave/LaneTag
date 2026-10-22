@@ -1,6 +1,7 @@
 #include "config.h"
 
 #include <Preferences.h>
+#include <nvs_flash.h>
 
 namespace {
 
@@ -24,6 +25,16 @@ constexpr int DEFAULT_BUSY = 10;
 constexpr int DEFAULT_LED = 8;
 constexpr bool DEFAULT_LED_LOW = true;
 constexpr int DEFAULT_BUTTON = 9;
+#elif defined(BOARD_CYD)
+// ESP32-2432S028: a PN532 goes on CN1 (GPIO 22, 27, 3.3 V, GND). The screen
+// and touch take most other pins; the SPI defaults are the SD card slot's.
+// The RGB LED is lit when low: 4 red, 16 green, 17 blue.
+constexpr int DEFAULT_SDA = 27, DEFAULT_SCL = 22, DEFAULT_RX = 27, DEFAULT_TX = 22;
+constexpr int DEFAULT_SCK = 18, DEFAULT_MISO = 19, DEFAULT_MOSI = 23, DEFAULT_SS = 5, DEFAULT_RST = -1;
+constexpr int DEFAULT_BUSY = 35;
+constexpr int DEFAULT_LED = 17;
+constexpr bool DEFAULT_LED_LOW = true;
+constexpr int DEFAULT_BUTTON = 0;
 #else
 constexpr int DEFAULT_SDA = 21, DEFAULT_SCL = 22, DEFAULT_RX = 16, DEFAULT_TX = 17;
 constexpr int DEFAULT_SCK = 18, DEFAULT_MISO = 19, DEFAULT_MOSI = 23, DEFAULT_SS = 5, DEFAULT_RST = 4;
@@ -57,6 +68,10 @@ void setDefaults(Config &config) {
     // An OLED most likely shares the reader's I2C pins.
     config.display.sda = DEFAULT_SDA;
     config.display.scl = DEFAULT_SCL;
+#ifdef BOARD_CYD
+    config.reader.bus = Pn532Bus::UART;
+    config.display.type = DisplayType::CydIli9341;
+#endif
     // The last two bytes of the MAC address, as on the setup access point.
     uint64_t mac = ESP.getEfuseMac();
     char name[24];
@@ -195,9 +210,14 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
     JsonObjectConst display = in["display"];
     if (!display.isNull()) {
         String type = display["type"] | "none";
-        next.display.type = type == "ssd1306"  ? DisplayType::SSD1306
-                            : type == "sh1106" ? DisplayType::SH1106
-                                               : DisplayType::None;
+        next.display.type = type == "ssd1306"      ? DisplayType::SSD1306
+                            : type == "sh1106"     ? DisplayType::SH1106
+                            : type == "cyd"        ? DisplayType::CydIli9341
+                            : type == "cyd-st7789" ? DisplayType::CydSt7789
+                                                   : DisplayType::None;
+#ifndef HAS_TFT
+        if (isTft(next.display.type)) return "this firmware has no touch screen support (use the esp32dev build)";
+#endif
         next.display.sda = pin(display["sda"], next.display.sda);
         next.display.scl = pin(display["scl"], next.display.scl);
         int address = display["address"] | (int)next.display.address;
@@ -205,7 +225,8 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
         next.display.address = address;
         if (!display["flip"].isNull()) next.display.flip = display["flip"].as<bool>();
         next.display.sleepMinutes = constrain(display["sleep"] | next.display.sleepMinutes, 0, 1440);
-        if (next.display.type != DisplayType::None && (next.display.sda < 0 || next.display.scl < 0))
+        if (next.display.type != DisplayType::None && !isTft(next.display.type) &&
+            (next.display.sda < 0 || next.display.scl < 0))
             return "the display needs its SDA and SCL pins";
     }
     JsonArrayConst printers = in["printers"];
@@ -263,6 +284,12 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
     return "";
 }
 
+String slotName(const PrinterConfig &printer, int slot) {
+    if (slot <= 0) return "Ask";
+    // As the printers name them: toolheads T0-T3, IFS slots 1-4.
+    return printer.model == Model::Creator5 ? "T" + String(slot - 1) : "Slot " + String(slot);
+}
+
 void loadConfig(Config &config) {
     setDefaults(config);
     Preferences prefs;
@@ -285,8 +312,17 @@ void saveConfig(const Config &config) {
     configToJson(config, doc.to<JsonObject>(), true);
     String text;
     serializeJson(doc, text);
-    Preferences prefs;
-    prefs.begin(NVS_NAMESPACE, false);
-    prefs.putString(NVS_KEY, text);
-    prefs.end();
+    for (int attempt = 0; attempt < 2; attempt++) {
+        Preferences prefs;
+        bool saved = prefs.begin(NVS_NAMESPACE, false) && prefs.putString(NVS_KEY, text);
+        prefs.end();
+        if (saved) return;
+        if (attempt) break;
+        // NVS full or unreadable, as left by a board's previous firmware:
+        // start it afresh (its other contents are only Wi-Fi driver caches).
+        log_e("settings storage full or unusable; erasing it");
+        nvs_flash_erase();
+        nvs_flash_init();
+    }
+    log_e("settings not saved (%u bytes)", text.length());
 }

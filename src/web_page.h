@@ -147,14 +147,14 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
   <div class="card">
     <h2>Display</h2>
     <div class="grid">
-      <div><label for="dispType">OLED (128x64, I2C)</label><select id="dispType"><option value="none">None</option><option value="ssd1306">SSD1306 (0.96")</option><option value="sh1106">SH1106 (1.3")</option></select></div>
-      <div class="disp"><label for="dispSda">SDA pin</label><input id="dispSda" type="number"></div>
-      <div class="disp"><label for="dispScl">SCL pin</label><input id="dispScl" type="number"></div>
-      <div class="disp"><label for="dispAddr">Address</label><select id="dispAddr"><option value="60">0x3C</option><option value="61">0x3D</option></select></div>
+      <div><label for="dispType">Screen</label><select id="dispType"><option value="none">None</option><option value="ssd1306">OLED SSD1306 (0.96", I2C)</option><option value="sh1106">OLED SH1106 (1.3", I2C)</option><option value="cyd">CYD 2.8" touch (ESP32-2432S028)</option><option value="cyd-st7789">CYD 2.8" touch, ST7789 (two USB ports)</option></select></div>
+      <div class="disp oled"><label for="dispSda">SDA pin</label><input id="dispSda" type="number"></div>
+      <div class="disp oled"><label for="dispScl">SCL pin</label><input id="dispScl" type="number"></div>
+      <div class="disp oled"><label for="dispAddr">Address</label><select id="dispAddr"><option value="60">0x3C</option><option value="61">0x3D</option></select></div>
       <div class="disp"><label for="dispFlip">Orientation</label><select id="dispFlip"><option value="0">Normal</option><option value="1">Upside down</option></select></div>
       <div class="disp"><label for="dispSleep">Screen off after (minutes, 0: never)</label><input id="dispSleep" type="number" min="0"></div>
     </div>
-    <div class="hint">Shows the active printer and slot, and the filament of the last scan. It can share the PN532's I2C pins. Boards with a built-in 0.96" OLED (such as the Ideaspark ESP32) usually have it on SDA 21 / SCL 22.</div>
+    <div class="hint">Shows the active printer and slot, and the filament of the last scan. It can share the PN532's I2C pins. Boards with a built-in 0.96" OLED (such as the Ideaspark ESP32) usually have it on SDA 21 / SCL 22. The CYD touch screen (classic ESP32 builds only) also has buttons: tap the printer name for the next printer, the bottom row for the fixed slot, and a scan waiting for a slot can be put into one there.</div>
     <div class="msg" id="dispMsg"></div>
     <div class="actions"><button class="btn primary" id="saveDisplay">Save</button></div>
   </div>
@@ -488,7 +488,8 @@ function displaySettings() {
     address: +$("dispAddr").value, flip: $("dispFlip").value === "1", sleep: +$("dispSleep").value};
 }
 function showDisplay() {
-  document.querySelectorAll(".disp").forEach(e => e.classList.toggle("hidden", $("dispType").value === "none"));
+  const type = $("dispType").value;
+  document.querySelectorAll(".disp").forEach(e => e.classList.toggle("hidden", type === "none" || (e.classList.contains("oled") && type.startsWith("cyd"))));
   const d = status && status.display;
   setStatus($("dispMsg"), d && d.error ? d.error : "", d ? !d.error : undefined);
 }

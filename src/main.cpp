@@ -32,7 +32,12 @@ constexpr uint32_t SLOT_WAIT = 10 * 60 * 1000;
 // page would otherwise keep the reader off the network).
 constexpr uint32_t WIFI_RETRY = 30 * 1000;
 constexpr uint32_t WIFI_RETRY_IN_USE = 2 * 60 * 1000;
+// The home network gone this long while running: open the setup access
+// point too (auto-reconnect alone can stay stuck when the router keeps
+// turning the reader away).
+constexpr uint32_t WIFI_LOST = 60 * 1000;
 uint32_t lastWifiTry = 0;
+uint32_t wifiLostAt = 0;
 
 // The button steps the active printer's slot: ask, 1 ... SLOT_COUNT, ask.
 // A first press only shows the slot on the LED (one blink per slot number,
@@ -299,6 +304,17 @@ void loop() {
         } else if (millis() - lastWifiTry > (WiFi.softAPgetStationNum() ? WIFI_RETRY_IN_USE : WIFI_RETRY)) {
             lastWifiTry = millis();
             WiFi.begin(app.config.wifiSsid.c_str(), app.config.wifiPass.c_str());
+        }
+    } else if (!app.apMode && app.config.wifiSsid.length()) {
+        if (WiFi.status() == WL_CONNECTED) {
+            wifiLostAt = 0;
+        } else if (!wifiLostAt) {
+            wifiLostAt = millis() | 1;
+        } else if (millis() - wifiLostAt > WIFI_LOST) {
+            wifiLostAt = 0;
+            app.wifiError = wifiFailure();
+            log_w("Wi-Fi %s lost: %s", app.config.wifiSsid.c_str(), app.wifiError.c_str());
+            startAccessPoint();
         }
     }
     if (app.last.waiting && millis() - app.last.at > SLOT_WAIT) {

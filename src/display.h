@@ -1,22 +1,29 @@
-// An optional 128x64 I2C OLED (SSD1306 or SH1106): the active printer and
-// its slot, the filament of the last scan and what the printer made of it.
+// An optional screen: a 128x64 I2C OLED (SSD1306 or SH1106), or the 2.8"
+// touch screen of the ESP32-2432S028 (see tft.h). It shows the active
+// printer and its slot, the filament of the last scan and what the printer
+// made of it.
 #pragma once
 
 #include <Arduino.h>
 
 #include "reader.h"
 
-enum class DisplayType : uint8_t { None = 0, SSD1306 = 1, SH1106 = 2 };
+enum class DisplayType : uint8_t { None = 0, SSD1306 = 1, SH1106 = 2, CydIli9341 = 3, CydSt7789 = 4 };
+
+inline bool isTft(DisplayType type) { return type == DisplayType::CydIli9341 || type == DisplayType::CydSt7789; }
 
 struct DisplayConfig {
     DisplayType type = DisplayType::None;
-    int sda = -1, scl = -1;
+    int sda = -1, scl = -1;     // OLED
     uint8_t address = 0x3C;     // 7-bit; 0x3D on some modules
     bool flip = false;          // turned 180 degrees
     int sleepMinutes = 10;      // screen off after this long without a change; 0: never
 };
 
 const char *displayTypeName(DisplayType type);
+// A colour name for the screen: the nearest of a few common filament
+// colours.
+const char *colorName(uint32_t color);
 
 class Display {
 public:
@@ -27,13 +34,13 @@ public:
     void loop();
     // Draw now (before a call that blocks the loop, such as a scan going
     // to the printer).
-    void refresh() { draw(true); }
+    void refresh();
     // Show the active printer's slot in large type for a few seconds.
     void showSlot();
     // Wake the screen.
     void wake();
 
-    bool enabled() const { return u8g2_ != nullptr; }
+    bool enabled() const { return u8g2_ != nullptr || tft_ != nullptr; }
     String error() const { return error_; }
 
 private:
@@ -49,6 +56,7 @@ private:
     int wrap(const String &text, int y, int maxLines);
 
     class U8G2 *u8g2_ = nullptr;
+    class Tft *tft_ = nullptr;
     String error_;
     uint8_t shown_[1024];
     bool asleep_ = false;

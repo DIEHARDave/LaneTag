@@ -70,6 +70,8 @@ struct Config {
 
 const char *methodName(Method method);
 const char *modelName(Model model);
+// "Ask", "Slot 1".."Slot 4" (AD5X IFS) or "T0".."T3" (Creator 5 toolheads).
+String slotName(const PrinterConfig &printer, int slot);
 
 void loadConfig(Config &config);
 void saveConfig(const Config &config);
