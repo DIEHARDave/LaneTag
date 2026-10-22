@@ -232,7 +232,7 @@ void Tft::touched(int x, int y) {
     if (y >= FOOTER) {
         // The fixed slot for this reader.
         int slot = constrain(x / SLOT_W, 0, SLOT_COUNT);
-        if (slot == printer.slot) return;
+        if (slot == printer.slot || (!slot && !printer.canAsk())) return;
         printer.slot = slot;
         saveConfig(config);
         app.feedback.count(slot);
@@ -338,7 +338,7 @@ void Tft::drawSlots() {
                        : slot == 0 ? String("Ask")
                        : printer->model == Model::Creator5 ? "T" + String(slot - 1)
                                                            : String(slot);
-        lcd.setTextColor(printer ? TEXT : MUTED, fill);
+        lcd.setTextColor(printer && (slot || printer->canAsk()) ? TEXT : MUTED, fill);
         int w = lcd.textWidth(label.c_str());
         lcd.drawString(label.c_str(), x + (SLOT_W - w) / 2, FOOTER + 15);
     }

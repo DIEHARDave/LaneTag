@@ -97,7 +97,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
 <section id="printers">
   <div class="card">
     <h2>Printers</h2>
-    <div class="hint">Pick a method per printer. <b>zmod_nfc</b> sends the whole tag to the zmod_nfc plugin, which shows its slot popup, matches Spoolman and fills lane data. <b>Zmod basic</b> sets slot colour and material through Moonraker (no plugin needed). <b>Stock</b> uses Flashforge's local API: slot colour and material only; it needs the printer's serial number and check code.</div>
+    <div class="hint">Pick a method per printer. <b>zmod_nfc</b> sends the whole tag to the zmod_nfc plugin, which shows its slot popup, matches Spoolman and fills lane data. <b>Zmod basic</b> sets slot colour and material through Moonraker (no plugin needed). <b>Stock</b> uses Flashforge's local API: slot colour and material only; it needs the printer's serial number and check code. A <b>Snapmaker U1</b> with paxx12's Extended firmware gets each scan as its head's own RFID read, and its SpoolLink matches the tag in Spoolman; each U1 reader is fixed to one head.</div>
     <div id="printerList"></div>
     <div class="actions">
       <button class="btn" id="addPrinter">Add printer</button>
@@ -171,8 +171,11 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const METHODS = {zmod_nfc: "Zmod + zmod_nfc", zmod_basic: "Zmod basic", stock: "Stock firmware"};
-const MODELS = {ad5x: "AD5X", creator5: "Creator 5"};
+const METHODS = {zmod_nfc: "Zmod + zmod_nfc", zmod_basic: "Zmod basic", stock: "Stock firmware", snapmaker: "Extended firmware"};
+const MODELS = {ad5x: "AD5X", creator5: "Creator 5", snapmaker_u1: "Snapmaker U1"};
+// The U1 runs only the Snapmaker method, which is only for the U1; it cannot
+// ask for the slot, so its readers are always fixed to a head.
+const U1 = "snapmaker_u1";
 let status = null, config = null, slotsFor = "", slots = null, busy = false;
 
 async function api(path, body) {
@@ -267,11 +270,11 @@ function renderSlots() {
   const p = status.printers[status.active], next = p ? p.slot : 0;
   const nextName = next && slots.slots.find(x => x.slot === next);
   hint.textContent = waiting ? "Click a slot to put this spool in it." :
-    nextName ? `The next scan goes into ${nextName.label}. Click another slot, or Ask, to change that.` :
+    nextName ? `The next scan goes into ${nextName.label}. Click another ${p.model === U1 ? "head" : "slot, or Ask,"} to change that.` :
     "The printer asks where each scan goes. Click a slot to send every scan there instead.";
   const mark = on => on && !waiting ? "<br><em>next scan</em>" : "";
   const ask = p && p.method === "zmod_nfc" ? "on the printer's screen" : "on this page";
-  const tiles = waiting ? [] : [`<button class="slot${next ? "" : " next"}" data-slot="0" ${busy ? "disabled" : ""}><i class="q">?</i><div><b>Ask</b><span>${ask}${mark(!next)}</span></div></button>`];
+  const tiles = waiting || (p && p.model === U1) ? [] : [`<button class="slot${next ? "" : " next"}" data-slot="0" ${busy ? "disabled" : ""}><i class="q">?</i><div><b>Ask</b><span>${ask}${mark(!next)}</span></div></button>`];
   for (const x of slots.slots) {
     const c = x.color ? `background:#${esc(x.color)}` : "";
     const what = [x.material && x.material !== "?" ? x.material : "", x.loaded ? "loaded" : "empty"].filter(Boolean).join(" · ");
@@ -352,16 +355,21 @@ $("rescan").onclick = () => api("/api/rescan", {});
 
 // --- Printers ---------------------------------------------------------------
 function slotName(p, n) {
-  return p.model === "creator5" ? `toolhead T${n - 1}` : `slot ${n}`;
+  return p.model === "creator5" ? `toolhead T${n - 1}` : p.model === U1 ? `head ${n}` : `slot ${n}`;
 }
 
 // Only zmod_nfc can ask on the printer's screen. With the other methods
 // "ask" means picking the slot on this page after every scan.
 function slotOptions(p) {
   const ask = p.method === "zmod_nfc" ? "Ask on the printer's screen" : "Ask on this web page";
-  let html = `<option value="0" ${p.slot ? "" : "selected"}>${ask}</option>`;
+  let html = p.model === U1 ? "" : `<option value="0" ${p.slot ? "" : "selected"}>${ask}</option>`;
   for (let n = 1; n <= 4; n++) html += `<option value="${n}" ${p.slot === n ? "selected" : ""}>Always ${slotName(p, n)}</option>`;
   return html;
+}
+
+function methodOptions(p) {
+  return Object.entries(METHODS).filter(([k]) => (k === "snapmaker") === (p.model === U1))
+    .map(([k, v]) => `<option value="${k}" ${p.method === k ? "selected" : ""}>${v}</option>`).join("");
 }
 
 function printerCard(p, i) {
@@ -371,7 +379,7 @@ function printerCard(p, i) {
     <div><label>Name</label><input data-k="name" value="${esc(p.name)}" placeholder="AD5X"></div>
     <div><label>IP address</label><input data-k="host" value="${esc(p.host)}" placeholder="192.168.1.50"></div>
     <div><label>Printer</label><select data-k="model">${Object.entries(MODELS).map(([k, v]) => `<option value="${k}" ${p.model === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
-    <div><label>Method</label><select data-k="method">${Object.entries(METHODS).map(([k, v]) => `<option value="${k}" ${p.method === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+    <div><label>Method</label><select data-k="method">${methodOptions(p)}</select></div>
     <div><label>Port</label><input data-k="port" type="number" value="${p.port || ""}" placeholder="${ph}"></div>
     <div><label>Slot for this reader</label><select data-k="slot">${slotOptions(p)}</select></div>
     <div class="m-stock"><label>Serial number</label><input data-k="serial" value="${esc(p.serial)}"></div>
@@ -384,13 +392,17 @@ function printerCard(p, i) {
 }
 
 function showMethodFields(card) {
-  const m = card.querySelector('[data-k="method"]').value;
   const model = card.querySelector('[data-k="model"]').value;
+  const method = card.querySelector('[data-k="method"]');
+  let m = method.value;
+  if (model === U1) m = "snapmaker";
+  else if (m === "snapmaker") m = "zmod_nfc";
+  method.innerHTML = methodOptions({model, method: m});
   const slot = card.querySelector('[data-k="slot"]');
   let value = +slot.value;
   // Switching to a method whose printer cannot ask: default to a fixed slot,
   // so a scan fills it without the web page.
-  if (m !== "zmod_nfc" && card.dataset.method === "zmod_nfc" && !value) value = 1;
+  if ((model === U1 || m !== "zmod_nfc" && card.dataset.method === "zmod_nfc") && !value) value = 1;
   card.dataset.method = m;
   slot.innerHTML = slotOptions({method: m, model, slot: value});
   card.querySelector(".slot-warn").classList.toggle("hidden", m === "zmod_nfc" || value !== 0);

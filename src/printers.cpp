@@ -616,6 +616,176 @@ PrinterReply stockAssign(const PrinterConfig &printer, const Filament &f, int sl
     return reply;
 }
 
+// --- Snapmaker U1 (paxx12's Extended firmware) ----------------------------------
+//
+// On the Extended firmware OpenRFID hands each head's tag reads to Klipper's
+// filament_detect/set endpoint; this reader does the same for its head, so
+// the screen, the slicer and SpoolLink treat the scan as the head's own read.
+// SpoolLink (when Spoolman is set up) then looks the card UID up in Spoolman
+// by itself and, if found, replaces the head's filament with the spool's.
+
+constexpr int U1_HEADS = 4;
+// How long SpoolLink gets to find the spool in Spoolman.
+constexpr uint32_t SPOOLLINK_WAIT = 4000;
+
+bool u1Status(const PrinterConfig &printer, JsonDocument &status, String &error, bool sensors = false) {
+    String path = "/printer/objects/query?print_stats=state&filament_detect=state&print_task_config="
+                  "filament_vendor,filament_type,filament_sub_type,filament_color_rgba,filament_spool_id";
+    if (sensors)
+        for (int n = 0; n < U1_HEADS; n++) path += "&filament_motion_sensor%20e" + String(n) + "_filament";
+    HttpResult result = moonraker(printer, path, "GET");
+    JsonDocument doc;
+    if (deserializeJson(doc, result.body) || !result.ok()) {
+        error = moonrakerFailure(result, doc);
+        return false;
+    }
+    status.set(doc["result"]["status"]);
+    if (status["filament_detect"].isNull() || status["print_task_config"].isNull()) {
+        error = "No Snapmaker filament_detect on this printer (is it a Snapmaker U1?)";
+        return false;
+    }
+    return true;
+}
+
+bool u1HasSpoolLink(const PrinterConfig &printer) {
+    HttpResult result = moonraker(printer, "/server/info", "GET");
+    JsonDocument doc;
+    if (!result.ok() || deserializeJson(doc, result.body)) return false;
+    for (JsonVariantConst c : doc["result"]["components"].as<JsonArrayConst>())
+        if (c.as<String>() == "spoollink") return true;
+    return false;
+}
+
+// What a head holds, from print_task_config: "Sunlu PLA Matte" and its colour.
+SlotInfo u1Head(const JsonDocument &status, int head) {
+    JsonObjectConst ptc = status["print_task_config"];
+    SlotInfo info;
+    info.slot = head;
+    info.label = "Head " + String(head);
+    String vendor = ptc["filament_vendor"][head - 1] | "NONE";
+    String type = ptc["filament_type"][head - 1] | "NONE";
+    String sub = ptc["filament_sub_type"][head - 1] | "";
+    if (type.length() && type != "NONE") {
+        info.material = (vendor != "NONE" && vendor != "Generic" ? vendor + " " : String()) + type;
+        if (sub.length() && sub != "NONE") info.material += " " + sub;
+        String rgba = ptc["filament_color_rgba"][head - 1] | "";
+        info.color = rgba.substring(0, 6);
+    }
+    return info;
+}
+
+SlotList u1Slots(const PrinterConfig &printer) {
+    SlotList list;
+    JsonDocument status;
+    if (!u1Status(printer, status, list.error, true)) return list;
+    for (int head = 1; head <= U1_HEADS; head++) {
+        SlotInfo info = u1Head(status, head);
+        String sensor = "filament_motion_sensor e" + String(head - 1) + "_filament";
+        info.loaded = status[sensor]["filament_detected"] | false;
+        list.slots.push_back(info);
+    }
+    list.ok = true;
+    return list;
+}
+
+const char *u1CardType(TagKind kind) {
+    switch (kind) {
+    case TagKind::Type2: return "NTAG";
+    case TagKind::MifareClassic: return "M1";
+    default: return tagKindName(kind);
+    }
+}
+
+PrinterReply u1Assign(const PrinterConfig &printer, const Tag &tag, const Filament &f, int head) {
+    PrinterReply reply;
+    if (head < 1 || head > U1_HEADS) {
+        reply.message = "The U1 has heads 1 to " + String(U1_HEADS);
+        return reply;
+    }
+    JsonDocument status;
+    if (!u1Status(printer, status, reply.message)) return reply;
+    String state = status["print_stats"]["state"] | "";
+    if (state == "printing" || state == "paused") {
+        reply.message = "The printer is printing; heads are not changed while it prints";
+        return reply;
+    }
+    bool spoolLink = u1HasSpoolLink(printer);
+    int spoolId = f.spoolId > 0 && f.spoolId < MAX_SPOOLMAN_ID ? f.spoolId : 0;
+    // Without filament data only Spoolman can tell what the spool is.
+    if (!f.hasFilamentData() && !spoolLink) {
+        reply.message = spoolId ? "The tag only names Spoolman spool " + String(spoolId) +
+                                      "; turn on Spoolman in the Extended firmware's settings to look it up"
+                                : "No filament data on this tag, and Spoolman is not set up on the printer";
+        return reply;
+    }
+
+    // As OpenRFID sends a read: brand "Generic" and no subtype unless it is
+    // Snapmaker's own filament, so the slicer finds a matching profile.
+    JsonDocument body;
+    body["channel"] = head - 1;
+    JsonObject info = body["info"].to<JsonObject>();
+    JsonArray uid = info["CARD_UID"].to<JsonArray>();
+    for (int n = 0; n < tag.uidLen; n++) uid.add(tag.uid[n]);
+    info["CARD_TYPE"] = u1CardType(tag.kind);
+    if (f.hasFilamentData()) {
+        bool snapmaker = f.brand.equalsIgnoreCase("Snapmaker");
+        info["VENDOR"] = snapmaker ? "Snapmaker" : "Generic";
+        info["MAIN_TYPE"] = upper(f.material.length() ? f.material : String("PLA"));
+        info["SUB_TYPE"] = snapmaker ? f.modifiers : String();
+        if (f.nozzleMin) info["HOTEND_MIN_TEMP"] = f.nozzleMin;
+        if (f.nozzleMax) info["HOTEND_MAX_TEMP"] = f.nozzleMax;
+        if (f.bedTemp) info["BED_TEMP"] = f.bedTemp;
+        info["ALPHA"] = f.alpha;
+        info["RGB_1"] = f.color >= 0 ? f.color : 0xFFFFFF;
+    }
+    String text;
+    serializeJson(body, text);
+    HttpResult result = moonraker(printer, "/printer/filament_detect/set", "POST", text);
+    if (!result.ok()) {
+        JsonDocument doc;
+        deserializeJson(doc, result.body);
+        reply.message = result.code == 404 ? String("No filament_detect/set endpoint: this needs the Extended firmware")
+                                           : moonrakerFailure(result, doc);
+        return reply;
+    }
+
+    String notes;
+    if (spoolId && spoolLink) {
+        // Binds the card to the tag's spool in Spoolman, then loads that spool.
+        JsonDocument cmd;
+        cmd["script"] = "SET_SPOOL_ID CHANNEL=" + String(head - 1) + " SPOOL_ID=" + String(spoolId);
+        String script;
+        serializeJson(cmd, script);
+        HttpResult set = moonraker(printer, "/printer/gcode/script", "POST", script, 15000);
+        if (!set.ok()) notes = " Spoolman spool " + String(spoolId) + " was not set (" + String(set.code) + ").";
+    }
+    String error;
+    if (spoolLink) {
+        uint32_t deadline = millis() + SPOOLLINK_WAIT;
+        do {
+            delay(400);
+            if (!u1Status(printer, status, error)) break;
+        } while ((status["print_task_config"]["filament_spool_id"][head - 1] | 0) == 0 &&
+                 (int32_t)(millis() - deadline) < 0);
+    } else {
+        u1Status(printer, status, error);
+    }
+    SlotInfo now = u1Head(status, head);
+    int spool = status["print_task_config"]["filament_spool_id"][head - 1] | 0;
+    if (!f.hasFilamentData() && !spool) {
+        reply.message = "SpoolLink found no Spoolman spool for this tag, and the tag has no filament data";
+        return reply;
+    }
+    reply.ok = true;
+    reply.title = now.material;
+    reply.spoolId = spool;
+    reply.message = now.label + " is now " + now.material + " #" + now.color;
+    if (spool) reply.message += " (Spoolman spool " + String(spool) + ")";
+    else if (spoolLink) reply.message += " (no Spoolman spool for this tag)";
+    reply.message += notes;
+    return reply;
+}
+
 }  // namespace
 
 PrinterReply sendScan(const PrinterConfig &printer, const Tag &tag, const String &readerName, int slot) {
@@ -630,6 +800,7 @@ PrinterReply assignSlot(const PrinterConfig &printer, const Tag &tag, const Fila
     switch (printer.method) {
     case Method::ZmodNfc: return zmodNfcAssign(printer, tag, slot, readerName);
     case Method::ZmodBasic: return basicAssign(printer, tag, filament, slot);
+    case Method::Snapmaker: return u1Assign(printer, tag, filament, slot);
     default: return stockAssign(printer, filament, slot);
     }
 }
@@ -642,6 +813,7 @@ SlotList listSlots(const PrinterConfig &printer) {
     switch (printer.method) {
     case Method::ZmodNfc: return zmodNfcSlots(printer);
     case Method::ZmodBasic: return basicSlots(printer);
+    case Method::Snapmaker: return u1Slots(printer);
     default: return stockSlots(printer);
     }
 }

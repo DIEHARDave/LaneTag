@@ -2,7 +2,9 @@
 
 A Wi-Fi NFC/RFID filament tag reader for 3D printers, built from an
 **ESP32** and a **PN532**, **RC522** or **PN5180** module. Printers
-supported today: the **Flashforge AD5X** and **Flashforge Creator 5**.
+supported today: the **Flashforge AD5X**, the **Flashforge Creator 5** and
+the **Snapmaker U1** with paxx12's
+[Extended firmware](https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware).
 
 > Formerly **zmod_esp32-nfc**. Boards running that firmware keep their
 > settings when updated to LaneTag (see [Updating from
@@ -74,13 +76,14 @@ printer is given a fixed slot on the reader (see
 
 ## Printer methods
 
-Each printer on the reader's list uses one of three methods:
+Each printer on the reader's list uses one of these methods:
 
 | Method | Printer runs | What a scan does |
 |--------|--------------|------------------|
 | **Zmod + zmod_nfc** | Zmod with the [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc) plugin | The **whole tag read** goes through Moonraker to the plugin (no extra port or service on the printer), which handles it exactly like a tag on a USB reader plugged into the printer: it decodes every format zmod_nfc knows, looks the spool up in **Spoolman** (spool ID on the tag, or the tag's UID), shows its **slot popup on the printer's screen** (or takes the slot you insert filament into), sets the slot through zmod_afclite's `SET_SPOOL_ID` or Zmod's `CHANGE_ZCOLOR`, and fills in Moonraker's **lane_data** for OrcaSlicer. The reader's web page can pick the slot too. |
 | **Zmod basic** | Zmod, no plugin | Material and colour go to the slot through Moonraker (`CHANGE_ZCOLOR`), snapped to Zmod's material list and colour palette, and the slot's **lane_data** entry gets the material, colour, vendor, temperatures and the tag's Spoolman spool ID if it carries one. No Spoolman lookup. |
 | **Stock firmware** | Flashforge firmware | Material and colour through the printer's local API (`msConfig_cmd` on port 8898) - that is all the stock API offers. Needs the printer's **serial number** and **check code**. The stock screens can only draw their own 24 colours (a different set on each model), so the colour is snapped to the closest one (CIEDE2000), and on the Creator 5 the material to its list. |
+| **Extended firmware** | Snapmaker U1 with paxx12's [Extended firmware](https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware) | The scan reaches the head **as if the head's own RFID reader had read it**: the reader decodes the tag and posts it to Klipper's `filament_detect/set` endpoint through Moonraker, as the firmware's OpenRFID does (vendor "Generic" unless it is Snapmaker filament, so the slicer finds a profile). The screen, the slicer and the firmware's **SpoolLink** see it like any other read: with Spoolman set up in the firmware, SpoolLink looks the tag's UID up in Spoolman and loads that spool. A tag naming a Spoolman spool ID is bound to it with `SET_SPOOL_ID`; a tag with no filament data works when its UID is already bound to a spool. Nothing to install. Heads are not changed while the printer prints. Each reader is **always fixed to one head** (no "Ask"). |
 
 > **Stock firmware and Zmod basic: give each printer a fixed slot.** Only
 > zmod_nfc can show a "which slot?" popup on the printer's screen. With the
@@ -276,8 +279,8 @@ the file is `.pio/build/<board>/firmware.bin`).
    when the reader loses your network for a minute while running.
 3. Open the reader at **`http://lanetag-xxxx.local`** (the name is on the
    Settings tab) or its IP address from your router.
-4. Under **Printers**, add each printer: name, IP address, AD5X or
-   Creator 5, and the method. **Test** checks the connection.
+4. Under **Printers**, add each printer: name, IP address, the printer
+   model, and the method. **Test** checks the connection.
    * **Zmod + zmod_nfc**: install or update zmod_nfc on the printer. The
      reader reaches it through Moonraker (port 7125); zmod_nfc adds
      endpoints to Moonraker's API rather than opening a port of its own.
@@ -285,6 +288,10 @@ the file is `.pio/build/<board>/firmware.bin`).
    * Both Zmod methods work when the reader's address is in Moonraker's
      `[authorization] trusted_clients`, which Zmod sets to every address by
      default. If you narrowed it, enter a Moonraker API key.
+   * **Snapmaker U1**: the method is always **Extended firmware**
+     (Moonraker, port 7125; nothing to install). Pick the head this reader
+     is for. For Spoolman matching, turn on Spoolman in the Extended
+     firmware's settings.
    * **Stock firmware**: enter the printer's serial number and its check
      code, the code the printer shows for LAN connections (the one
      OrcaSlicer and FlashPrint ask for when you add the printer).
@@ -316,6 +323,9 @@ the printer did, plus the target printer's slots.
   (the LED gives a long blink when the printer took it). With "Ask on this
   web page", keep the reader's page open and click the slot after each
   scan; the printer's screen cannot ask.
+* **Snapmaker U1:** the scan fills the reader's head straight away; the
+  head's screen shows it as if the head had read the tag itself. The
+  button, the web page and the CYD screen step through heads 1-4 only.
 
 ### One reader per slot
 

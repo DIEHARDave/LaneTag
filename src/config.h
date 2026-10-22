@@ -17,12 +17,16 @@ enum class Method : uint8_t {
                     // Moonraker (CHANGE_ZCOLOR) and Moonraker's lane_data
     Stock = 2,      // stock Flashforge firmware: the local API's msConfig_cmd
                     // (slot material and colour only)
+    Snapmaker = 3,  // Snapmaker U1 with paxx12's Extended firmware: the read
+                    // goes to the head as if its own RFID reader had read it
+                    // (Moonraker's filament_detect/set, as OpenRFID does), and
+                    // the firmware's SpoolLink matches the UID in Spoolman
 };
 
-enum class Model : uint8_t { AD5X = 0, Creator5 = 1 };
+enum class Model : uint8_t { AD5X = 0, Creator5 = 1, SnapmakerU1 = 2 };
 
 constexpr size_t MAX_PRINTERS = 6;
-// IFS slots on the AD5X, toolheads on the Creator 5.
+// IFS slots on the AD5X, toolheads on the Creator 5 and the Snapmaker U1.
 constexpr int SLOT_COUNT = 4;
 constexpr uint16_t MOONRAKER_PORT = 7125;
 constexpr uint16_t FLASHFORGE_PORT = 8898;
@@ -41,6 +45,10 @@ struct PrinterConfig {
     // scans go straight into this slot, with no prompt. 0: ask.
     int slot = 0;
 
+    // Whether a scan can wait for its slot to be picked. The U1 always has a
+    // fixed head: nothing there can ask, and a head's own reader works the
+    // same way.
+    bool canAsk() const { return model != Model::SnapmakerU1; }
     uint16_t effectivePort() const;
     String baseUrl() const;
 };
@@ -70,7 +78,8 @@ struct Config {
 
 const char *methodName(Method method);
 const char *modelName(Model model);
-// "Ask", "Slot 1".."Slot 4" (AD5X IFS) or "T0".."T3" (Creator 5 toolheads).
+// "Ask", "Slot 1".."Slot 4" (AD5X IFS), "T0".."T3" (Creator 5 toolheads) or
+// "Head 1".."Head 4" (Snapmaker U1).
 String slotName(const PrinterConfig &printer, int slot);
 
 void loadConfig(Config &config);

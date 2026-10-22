@@ -98,17 +98,25 @@ const char *methodName(Method method) {
     switch (method) {
     case Method::ZmodNfc: return "zmod_nfc";
     case Method::ZmodBasic: return "zmod_basic";
+    case Method::Snapmaker: return "snapmaker";
     default: return "stock";
     }
 }
 
-const char *modelName(Model model) { return model == Model::Creator5 ? "creator5" : "ad5x"; }
+const char *modelName(Model model) {
+    switch (model) {
+    case Model::Creator5: return "creator5";
+    case Model::SnapmakerU1: return "snapmaker_u1";
+    default: return "ad5x";
+    }
+}
 
 uint16_t PrinterConfig::effectivePort() const {
     if (port) return port;
     switch (method) {
     case Method::ZmodNfc:
-    case Method::ZmodBasic: return MOONRAKER_PORT;
+    case Method::ZmodBasic:
+    case Method::Snapmaker: return MOONRAKER_PORT;
     default: return FLASHFORGE_PORT;
     }
 }
@@ -248,12 +256,20 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
             p.host.trim();
             String model = o["model"] | "ad5x";
             String method = o["method"] | "zmod_nfc";
-            p.model = model == "creator5" ? Model::Creator5 : Model::AD5X;
-            p.method = method == "stock" ? Method::Stock : method == "zmod_basic" ? Method::ZmodBasic : Method::ZmodNfc;
+            p.model = model == "creator5"       ? Model::Creator5
+                      : model == "snapmaker_u1" ? Model::SnapmakerU1
+                                                : Model::AD5X;
+            p.method = method == "stock"        ? Method::Stock
+                       : method == "zmod_basic" ? Method::ZmodBasic
+                       : method == "snapmaker"  ? Method::Snapmaker
+                                                : Method::ZmodNfc;
+            // The U1 takes only its own method, and that method only the U1.
+            if (p.model == Model::SnapmakerU1) p.method = Method::Snapmaker;
+            else if (p.method == Method::Snapmaker) p.model = Model::SnapmakerU1;
             p.port = constrain(o["port"] | 0, 0, 65535);
             // Settings saved before the fixed slot moved into each printer
             // had one auto_slot for all printers.
-            p.slot = constrain(o["slot"] | (in["auto_slot"] | 0), 0, SLOT_COUNT);
+            p.slot = constrain(o["slot"] | (in["auto_slot"] | 0), p.canAsk() ? 0 : 1, SLOT_COUNT);
             p.serial = o["serial"] | "";
             p.serial.trim();
             readSecret(o, "check_code", p.checkCode);
@@ -289,7 +305,11 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
 String slotName(const PrinterConfig &printer, int slot) {
     if (slot <= 0) return "Ask";
     // As the printers name them: toolheads T0-T3, IFS slots 1-4.
-    return printer.model == Model::Creator5 ? "T" + String(slot - 1) : "Slot " + String(slot);
+    switch (printer.model) {
+    case Model::Creator5: return "T" + String(slot - 1);
+    case Model::SnapmakerU1: return "Head " + String(slot);
+    default: return "Slot " + String(slot);
+    }
 }
 
 void loadConfig(Config &config) {

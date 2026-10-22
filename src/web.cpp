@@ -197,6 +197,10 @@ void handleFixedSlot() {
         sendError(400, "printer and slot (0 to " + String(SLOT_COUNT) + ") are needed");
         return;
     }
+    if (!slot && !app.config.printers[index].canAsk()) {
+        sendError(400, "this printer cannot ask; pick a head");
+        return;
+    }
     app.config.printers[index].slot = slot;
     saveConfig(app.config);
     JsonDocument reply;

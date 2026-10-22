@@ -7,8 +7,11 @@
 //   zmod_basic  material and colour go to Zmod through Moonraker, plus
 //               Moonraker's lane_data
 //   stock       material and colour go to the stock firmware's local API
+//   snapmaker   the Snapmaker U1 (Extended firmware) gets the read as its
+//               head's own RFID read; SpoolLink matches it in Spoolman
 // For zmod_basic and stock the slot is picked on the web page, or set once
-// as the automatic slot. The board's button steps that slot (see buttonLoop).
+// as the automatic slot; the U1 always has a fixed head. The board's button
+// steps that slot (see buttonLoop).
 #include <Arduino.h>
 #include <ESPmDNS.h>
 #include <WiFi.h>
@@ -54,6 +57,7 @@ void buttonPressed(bool step) {
     PrinterConfig &printer = app.config.printers[app.config.active];
     if (step) {
         printer.slot = (printer.slot + 1) % (SLOT_COUNT + 1);
+        if (!printer.slot && !printer.canAsk()) printer.slot = 1;
         log_i("button: %s slot %d", printer.name.c_str(), printer.slot);
     }
     app.feedback.count(printer.slot);
@@ -209,7 +213,8 @@ void App::handleTag(const Tag &tag) {
         record(reply);
         return;
     }
-    if (!last.filament.hasFilamentData()) {
+    // The U1's SpoolLink can find a tag without filament data in Spoolman.
+    if (!last.filament.hasFilamentData() && printer->method != Method::Snapmaker) {
         last.status = last.filament.spoolId
                           ? "This tag only names Spoolman spool " + String(last.filament.spoolId) +
                                 "; only the zmod_nfc method can look it up"
