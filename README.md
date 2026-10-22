@@ -369,7 +369,7 @@ the board resets or powers up: that starts the ESP32's flash mode.
 With an OLED set up under **Settings > Display**, the reader shows:
 
 * at the bottom, the active printer and its slot (`Ask`, `Slot 1`-`4` on the AD5X, `T0`-`T3`
-  on the Creator 5); pressing the slot button shows the slot in large type
+  on the Creator 5, `Head 1`-`4` on the Snapmaker U1); pressing the slot button shows the slot in large type
 * after a scan, the filament it found: the material in the top 16 rows (the
   yellow band on two-colour OLEDs), brand, the Spoolman spool
   (`#19`), a colour name with its hex value (the screen is monochrome) and
@@ -381,10 +381,17 @@ With an OLED set up under **Settings > Display**, the reader shows:
 
 The screen turns off after 10 minutes without a change (OLEDs burn in) and
 comes back on the next scan or button press; **Screen off after** changes
-this. The display may share the PN532's I2C pins. A display on other pins
-needs a second I2C bus, which the ESP32-C3 does not have. Boards with a
-built-in 0.96" OLED (Ideaspark ESP32 and similar) have it on SDA 21 / SCL 22
-at 0x3C.
+this. The display may share the PN532's I2C pins. With the PN532 on I2C, a
+display on other pins needs a second I2C bus, which the ESP32-C3 does not
+have; with the PN532 on HSU (or an RC522/PN5180) the display can go on any
+two free pins. Boards with a built-in 0.96" OLED (Ideaspark ESP32 and
+similar) have it on SDA 21 / SCL 22 at 0x3C.
+
+![An ESP32-C3 SuperMini with a PN532 (HSU) and a separate 0.96" two-colour OLED on SDA 6 / SCL 7, after a Snapmaker PLA SnapSpeed spool went into head 1 of a Snapmaker U1 as Spoolman spool 14](docs/u1-c3-oled.jpg)
+
+If the display stays dark, **Settings** shows why: which addresses answer on
+its pins, whether SDA or SCL is held low, or that nothing answers at all
+(usually a loose jumper, VCC/GND, or SDA and SCL swapped).
 
 ### The CYD touch screen
 
