@@ -288,13 +288,14 @@ the file is `.pio/build/<board>/firmware.bin`).
    * Both Zmod methods work when the reader's address is in Moonraker's
      `[authorization] trusted_clients`, which Zmod sets to every address by
      default. If you narrowed it, enter a Moonraker API key.
+   * **Flashforge stock firmware** (AD5X or Creator 5 without Zmod): enter
+     the printer's serial number and its check code, the code the printer
+     shows for LAN connections (the one OrcaSlicer and FlashPrint ask for
+     when you add the printer).
    * **Snapmaker U1**: the method is always **Extended firmware**
      (Moonraker, port 7125; nothing to install). Pick the head this reader
      is for. For Spoolman matching, turn on Spoolman in the Extended
      firmware's settings.
-   * **Stock firmware**: enter the printer's serial number and its check
-     code, the code the printer shows for LAN connections (the one
-     OrcaSlicer and FlashPrint ask for when you add the printer).
 5. On the **Scan** tab, choose which printer scans go to, and hold a tag to
    the reader.
 
