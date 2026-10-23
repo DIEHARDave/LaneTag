@@ -38,8 +38,8 @@ printers and their IP addresses, and how each printer is reached.
 > (identical results for every tag in zmod_nfc's decoder tests, identical
 > Bambu, Creality and Snapmaker keys). Not yet tried: Bambu and Creality
 > tags, a factory-fresh printer, and
-> the **Zmod basic** method. The PN532 works over I2C (ESP32-C3) and HSU
-> (classic ESP32), and the RC522 read tags on an ESP32-C3. On a **CYD**
+> the **Zmod basic** method. The PN532 works over I2C and HSU (ESP32-C3 and
+> classic ESP32), and the RC522 read tags on an ESP32-C3. On a **CYD**
 > (ESP32-2432S028, ST7789 version) with a PN532 over HSU, scans reach an
 > AD5X with zmod_nfc, and its printer, fixed-slot and "put the waiting scan
 > here" touch buttons all work. **PN5180
