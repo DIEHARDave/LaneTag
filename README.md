@@ -78,8 +78,9 @@ Each printer on the reader's list uses one of these methods:
 
 ## Hardware
 
-* An **ESP32** board: classic ESP32 (DevKit, WROOM-32), ESP32-S3 or
-  ESP32-C3 (SuperMini works).
+* An **ESP32** board: classic ESP32 (DevKit, WROOM-32), ESP32-S3,
+  ESP32-C3 (SuperMini works) or ESP32-C6 (DevKitC / SuperMini; builds and
+  boots, not yet tried with a reader).
 * A reader module, one of:
   * a **PN532**, e.g. the common red or blue "PN532 NFC RFID V3" boards or
     Elechouse's (good range, the tested one);
@@ -127,6 +128,7 @@ Default pins (all can be changed on the web page):
 | ESP32 | 21 | 22 | 16 | 17 | 2 | 0 (BOOT) |
 | ESP32-S3 | 8 | 9 | 18 | 17 | none | 0 (BOOT) |
 | ESP32-C3 | 6 | 7 | 20 | 21 | 8 (lit when low) | 9 (BOOT) |
+| ESP32-C6 | 6 | 7 | 17 | 16 | none | 9 (BOOT) |
 
 ```
 PN532          ESP32 (I2C)          PN532          ESP32 (HSU)
@@ -158,6 +160,7 @@ go to 3V3 instead of a GPIO (set the RST pin to -1).
 | ESP32 | 18 | 19 | 23 | 5 | 4 |
 | ESP32-S3 | 12 | 13 | 11 | 10 | 14 |
 | ESP32-C3 | 4 | 5 | 6 | 7 | 3 |
+| ESP32-C6 | 21 | 20 | 19 | 18 | 3 |
 
 ```
 RC522          ESP32
@@ -187,6 +190,7 @@ GPIO, AUX and REQ stay unconnected.
 | ESP32 | 18 | 19 | 23 | 5 | 27 | 4 |
 | ESP32-S3 | 12 | 13 | 11 | 10 | 15 | 14 |
 | ESP32-C3 | 4 | 5 | 6 | 7 | 10 | 3 |
+| ESP32-C6 | 21 | 20 | 19 | 18 | 2 | 3 |
 
 ```
 PN5180         ESP32
@@ -233,6 +237,7 @@ extension, or `pip install platformio`):
 pio run -e esp32dev -t upload      # classic ESP32
 pio run -e esp32-s3 -t upload      # ESP32-S3
 pio run -e esp32-c3 -t upload      # ESP32-C3
+pio run -e esp32-c6 -t upload      # ESP32-C6
 pio run -e cyd -t upload           # ESP32-2432S028 (CYD)
 pio device monitor                 # log output
 ```
@@ -242,6 +247,10 @@ pins and LED as defaults; the `esp32dev` build can drive the CYD screen too
 once it is picked under **Settings > Display**. If an upload stops at
 "Connecting..." or reports "Wrong boot mode", hold the **BOOT** button until
 the upload starts (the tested CYD did not enter flash mode by itself).
+
+The `esp32-c6` build uses the [pioarduino](https://github.com/pioarduino/platform-espressif32)
+platform (Arduino core 3.x), because the Arduino core 2.x the other builds
+use has no ESP32-C6 support; PlatformIO downloads it on the first build.
 
 Later updates can be uploaded from the web page (**Settings > Firmware**,
 the file is `.pio/build/<board>/firmware.bin`).
