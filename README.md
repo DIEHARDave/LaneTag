@@ -33,7 +33,7 @@ printers and their IP addresses, and how each printer is reached.
 > fixed to one slot), and to an **AD5X's stock screen** through the stock
 > API, and to an unmodified
 > **Creator 5 Pro on stock firmware**. The firmware
-> builds for ESP32, ESP32-S3 and ESP32-C3 without warnings. Its decoders and
+> builds for ESP32, ESP32-S3, ESP32-C3 and ESP32-C6 without warnings. Its decoders and
 > MIFARE key derivation match [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc)'s
 > (identical results for every tag in zmod_nfc's decoder tests, identical
 > Bambu, Creality and Snapmaker keys). Not yet tried: Bambu and Creality
