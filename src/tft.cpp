@@ -232,7 +232,7 @@ void Tft::touched(int x, int y) {
     if (y >= FOOTER) {
         // The fixed slot for this reader.
         int slot = constrain(x / SLOT_W, 0, SLOT_COUNT);
-        if (slot == printer.slot || (!slot && !printer.canAsk())) return;
+        if (slot == printer.slot || (!slot && !printer.canAsk()) || slot > printer.slotCount()) return;
         printer.slot = slot;
         saveConfig(config);
         app.feedback.count(slot);
@@ -240,8 +240,8 @@ void Tft::touched(int x, int y) {
     }
     if (screen == Screen::Scan && app.last.waiting && y >= PICK_Y && y < PICK_Y + PICK_H) {
         int slot = (x - PICK_X) / (PICK_W + 2) + 1;
-        if (slot < 1 || slot > SLOT_COUNT) return;
         int target = app.last.printer >= 0 ? app.last.printer : config.active;
+        if (slot < 1 || slot > config.printers[target].slotCount()) return;
         app.last.status = "Sending to " + slotName(config.printers[target], slot) + "...";
         app.last.waiting = false;
         draw(true);
@@ -323,7 +323,8 @@ void Tft::drawHeader() {
     lcd.drawString(fit(lcd, name, W - x - ipWidth - 18).c_str(), x, 9);
 }
 
-// The fixed slot: Ask, 1-4 (T0-T3 on the Creator 5).
+// The fixed slot: Ask, 1-4 (T0-T3 on the Creator 5, A1-A4 etc. on a Bambu
+// AMS, gate/lane/tool numbers on Klipper).
 void Tft::drawSlots() {
     auto &lcd = *lcd_;
     const PrinterConfig *printer = app.config.activePrinter();
@@ -334,11 +335,9 @@ void Tft::drawSlots() {
         bool on = printer && printer->slot == slot;
         uint32_t fill = on ? ACCENT : PANEL;
         lcd.fillRoundRect(x + 3, FOOTER + 4, SLOT_W - 6, H - FOOTER - 8, 6, fill);
-        String label = !printer ? (slot ? String(slot) : String("Ask"))
-                       : slot == 0 ? String("Ask")
-                       : printer->model == Model::Creator5 ? "T" + String(slot - 1)
-                                                           : String(slot);
-        lcd.setTextColor(printer && (slot || printer->canAsk()) ? TEXT : MUTED, fill);
+        String label = !printer ? (slot ? String(slot) : String("Ask")) : slotShortName(*printer, slot);
+        bool usable = printer && (slot ? slot <= printer->slotCount() : printer->canAsk());
+        lcd.setTextColor(usable ? TEXT : MUTED, fill);
         int w = lcd.textWidth(label.c_str());
         lcd.drawString(label.c_str(), x + (SLOT_W - w) / 2, FOOTER + 15);
     }
@@ -480,10 +479,10 @@ void Tft::drawScan() {
                                                          : "Pick a slot here or on the web page:";
         lcd.drawString(where.c_str(), 10, PICK_Y - 20);
         lcd.setFont(TITLE);
-        for (int slot = 1; slot <= SLOT_COUNT; slot++) {
+        for (int slot = 1; slot <= target->slotCount(); slot++) {
             int x = PICK_X + (slot - 1) * (PICK_W + 2);
             lcd.fillRoundRect(x, PICK_Y, PICK_W, PICK_H, 6, WARN);
-            String label = target->model == Model::Creator5 ? "T" + String(slot - 1) : String(slot);
+            String label = slotShortName(*target, slot);
             lcd.setTextColor(BG, WARN);
             lcd.drawString(label.c_str(), x + (PICK_W - lcd.textWidth(label.c_str())) / 2, PICK_Y + 10);
         }

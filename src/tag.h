@@ -64,6 +64,8 @@ struct Filament {
     int bedTemp = 0;
     int spoolId = 0;        // Spoolman spool, if the tag names one
     int filamentId = 0;
+    String presetId;        // the maker's filament id: Bambu preset ("GFA00"),
+                            // Creality material ("01001")
 
     bool valid() const { return format.length() > 0; }
     bool hasFilamentData() const { return material.length() > 0 || color >= 0; }

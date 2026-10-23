@@ -65,7 +65,13 @@ void restartSoon() {
 void handleIndex() {
     if (!authorized()) return;
     server.sendHeader("Cache-Control", "no-cache");
-    server.send_P(200, "text/html", INDEX_HTML);
+    // In pieces: one write of the whole page (over 32 KB) never left the C3.
+    constexpr size_t PIECE = 4096;
+    size_t length = strlen_P(INDEX_HTML);
+    server.setContentLength(length);
+    server.send(200, "text/html", "");
+    for (size_t sent = 0; sent < length; sent += PIECE)
+        server.sendContent_P(INDEX_HTML + sent, std::min(PIECE, length - sent));
 }
 
 void handleStatus() {
@@ -80,7 +86,7 @@ void handleStatus() {
     doc["ssid"] = app.config.wifiSsid;
     doc["ip"] = WiFi.localIP().toString();
     doc["rssi"] = WiFi.RSSI();
-    doc["tx_power"] = WiFi.getTxPower() / 4.0;
+    doc["tx_power"] = (int)WiFi.getTxPower() / 4.0;
     JsonObject reader = doc["reader"].to<JsonObject>();
     reader["ok"] = app.reader.connected();
     reader["name"] = app.reader.describe();
@@ -99,6 +105,10 @@ void handleStatus() {
         o["method"] = methodName(p.method);
         o["model"] = modelName(p.model);
         o["slot"] = p.slot;
+        if (p.model == Model::Bambu || p.model == Model::Klipper || p.model == Model::Creality ||
+            p.model == Model::Anycubic || p.model == Model::Qidi)
+            o["unit"] = p.unit;
+        if (p.model == Model::Klipper) o["slots_found"] = p.slotsFound;
     }
     const ScanRecord &last = app.last;
     if (last.id) {
@@ -138,6 +148,11 @@ void handleSetConfig() {
     }
     // "Save and join": restart into the home network even when nothing changed.
     if (doc["join"] | false) restart = true;
+    // New or changed Klipper printers: count their slots now, so the page
+    // offers only those.
+    if (!doc["printers"].isNull())
+        for (auto &p : app.config.printers)
+            if (p.model == Model::Klipper && !p.slotsFound) learnSlots(p, listSlots(p));
     saveConfig(app.config);
     applyWifiPower();          // takes effect at once
     JsonDocument reply;
@@ -170,8 +185,11 @@ void handleSlots() {
         sendError(400, "no such printer");
         return;
     }
+    PrinterConfig &printer = app.config.printers[index];
+    SlotList list = listSlots(printer);
+    if (learnSlots(printer, list)) saveConfig(app.config);
     JsonDocument doc;
-    slotListToJson(listSlots(app.config.printers[index]), doc.to<JsonObject>());
+    slotListToJson(list, doc.to<JsonObject>());
     sendJson(200, doc);
 }
 
@@ -193,12 +211,16 @@ void handleFixedSlot() {
     JsonDocument doc;
     if (!readBody(doc)) return;
     int index = printerIndex(doc), slot = doc["slot"] | -1;
-    if (index < 0 || slot < 0 || slot > SLOT_COUNT) {
-        sendError(400, "printer and slot (0 to " + String(SLOT_COUNT) + ") are needed");
+    if (index < 0) {
+        sendError(400, "no such printer");
         return;
     }
-    if (!slot && !app.config.printers[index].canAsk()) {
-        sendError(400, "this printer cannot ask; pick a head");
+    const PrinterConfig &printer = app.config.printers[index];
+    int first = printer.canAsk() ? 0 : 1;
+    if (slot < first || slot > printer.slotCount()) {
+        sendError(400, printer.slotCount() == 1 ? "this printer has one slot: 1"
+                                                : "slot " + String(first) + " to " + String(printer.slotCount()) +
+                                                      (first ? "" : " (0: ask)") + " is needed");
         return;
     }
     app.config.printers[index].slot = slot;
@@ -237,7 +259,15 @@ void handleTest() {
         sendError(400, "no such printer; save it first");
         return;
     }
-    sendReply(testPrinter(app.config.printers[index]));
+    PrinterConfig &printer = app.config.printers[index];
+    SlotList list = listSlots(printer);
+    if (learnSlots(printer, list)) saveConfig(app.config);
+    PrinterReply reply = testReply(list);
+    doc.clear();
+    doc["ok"] = reply.ok;
+    doc["message"] = reply.message;
+    if (printer.model == Model::Klipper) doc["slots_found"] = printer.slotsFound;
+    sendJson(200, doc);
 }
 
 void handleRescan() {

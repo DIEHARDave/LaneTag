@@ -27,6 +27,15 @@ constexpr int DEFAULT_BUSY = 10;
 constexpr int DEFAULT_LED = 8;
 constexpr bool DEFAULT_LED_LOW = true;
 constexpr int DEFAULT_BUTTON = 9;
+#elif CONFIG_IDF_TARGET_ESP32C6
+// GPIO 4, 5, 8, 9 and 15 are strapping pins and 12/13 are USB; BOOT is
+// GPIO 9. The LED differs between boards, so none by default.
+constexpr int DEFAULT_SDA = 6, DEFAULT_SCL = 7, DEFAULT_RX = 17, DEFAULT_TX = 16;
+constexpr int DEFAULT_SCK = 21, DEFAULT_MISO = 20, DEFAULT_MOSI = 19, DEFAULT_SS = 18, DEFAULT_RST = 3;
+constexpr int DEFAULT_BUSY = 2;
+constexpr int DEFAULT_LED = -1;
+constexpr bool DEFAULT_LED_LOW = false;
+constexpr int DEFAULT_BUTTON = 9;
 #elif defined(BOARD_CYD)
 // ESP32-2432S028: a PN532 goes on CN1 (GPIO 22, 27, 3.3 V, GND). The screen
 // and touch take most other pins; the SPI defaults are the SD card slot's.
@@ -99,7 +108,29 @@ const char *methodName(Method method) {
     case Method::ZmodNfc: return "zmod_nfc";
     case Method::ZmodBasic: return "zmod_basic";
     case Method::Snapmaker: return "snapmaker";
+    case Method::Bambu: return "bambu";
+    case Method::HappyHare: return "happy_hare";
+    case Method::Afc: return "afc";
+    case Method::LaneData: return "lane_data";
+    case Method::CrealityCfs: return "creality_cfs";
+    case Method::AnycubicAce: return "anycubic_ace";
+    case Method::QidiBox: return "qidi_box";
+    case Method::SnapmakerStock: return "snapmaker_stock";
     default: return "stock";
+    }
+}
+
+bool methodFits(Model model, Method method) {
+    switch (model) {
+    case Model::SnapmakerU1: return method == Method::Snapmaker || method == Method::SnapmakerStock;
+    case Model::Bambu: return method == Method::Bambu;
+    case Model::Klipper:
+        return method == Method::HappyHare || method == Method::Afc || method == Method::LaneData;
+    case Model::Adventurer5M: return method == Method::LaneData;
+    case Model::Creality: return method == Method::CrealityCfs;
+    case Model::Anycubic: return method == Method::AnycubicAce;
+    case Model::Qidi: return method == Method::QidiBox;
+    default: return method == Method::ZmodNfc || method == Method::ZmodBasic || method == Method::Stock;
     }
 }
 
@@ -107,6 +138,12 @@ const char *modelName(Model model) {
     switch (model) {
     case Model::Creator5: return "creator5";
     case Model::SnapmakerU1: return "snapmaker_u1";
+    case Model::Bambu: return "bambu";
+    case Model::Klipper: return "klipper";
+    case Model::Adventurer5M: return "ad5m";
+    case Model::Creality: return "creality";
+    case Model::Anycubic: return "anycubic";
+    case Model::Qidi: return "qidi";
     default: return "ad5x";
     }
 }
@@ -116,7 +153,15 @@ uint16_t PrinterConfig::effectivePort() const {
     switch (method) {
     case Method::ZmodNfc:
     case Method::ZmodBasic:
-    case Method::Snapmaker: return MOONRAKER_PORT;
+    case Method::Snapmaker:
+    case Method::SnapmakerStock:
+    case Method::HappyHare:
+    case Method::Afc:
+    case Method::LaneData:
+    case Method::QidiBox: return MOONRAKER_PORT;
+    case Method::Bambu: return BAMBU_PORT;
+    case Method::CrealityCfs: return CREALITY_PORT;
+    case Method::AnycubicAce: return ANYCUBIC_PORT;
     default: return FLASHFORGE_PORT;
     }
 }
@@ -165,6 +210,10 @@ void configToJson(const Config &config, JsonObject out, bool secrets) {
         o["method"] = methodName(p.method);
         o["port"] = p.port;
         o["slot"] = p.slot;
+        if (p.model == Model::Bambu || p.model == Model::Klipper || p.model == Model::Creality ||
+            p.model == Model::Anycubic || p.model == Model::Qidi)
+            o["unit"] = p.unit;
+        if (p.model == Model::Klipper) o["slots_found"] = p.slotsFound;
         o["serial"] = p.serial;
         secret(o, "check_code", p.checkCode, secrets);
         secret(o, "api_key", p.apiKey, secrets);
@@ -258,18 +307,52 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
             String method = o["method"] | "zmod_nfc";
             p.model = model == "creator5"       ? Model::Creator5
                       : model == "snapmaker_u1" ? Model::SnapmakerU1
+                      : model == "bambu"        ? Model::Bambu
+                      : model == "klipper"      ? Model::Klipper
+                      : model == "ad5m"         ? Model::Adventurer5M
+                      : model == "creality"     ? Model::Creality
+                      : model == "anycubic"     ? Model::Anycubic
+                      : model == "qidi"         ? Model::Qidi
                                                 : Model::AD5X;
             p.method = method == "stock"        ? Method::Stock
                        : method == "zmod_basic" ? Method::ZmodBasic
                        : method == "snapmaker"  ? Method::Snapmaker
+                       : method == "bambu"      ? Method::Bambu
+                       : method == "happy_hare" ? Method::HappyHare
+                       : method == "afc"        ? Method::Afc
+                       : method == "lane_data"  ? Method::LaneData
+                       : method == "creality_cfs" ? Method::CrealityCfs
+                       : method == "anycubic_ace" ? Method::AnycubicAce
+                       : method == "qidi_box"   ? Method::QidiBox
+                       : method == "snapmaker_stock" ? Method::SnapmakerStock
                                                 : Method::ZmodNfc;
-            // The U1 takes only its own method, and that method only the U1.
-            if (p.model == Model::SnapmakerU1) p.method = Method::Snapmaker;
-            else if (p.method == Method::Snapmaker) p.model = Model::SnapmakerU1;
+            // The U1, Bambu and Klipper printers take only their own methods.
+            if (!methodFits(p.model, p.method)) {
+                switch (p.model) {
+                case Model::SnapmakerU1: p.method = Method::Snapmaker; break;
+                case Model::Bambu: p.method = Method::Bambu; break;
+                case Model::Creality: p.method = Method::CrealityCfs; break;
+                case Model::Anycubic: p.method = Method::AnycubicAce; break;
+                case Model::Qidi: p.method = Method::QidiBox; break;
+                case Model::Klipper:
+                case Model::Adventurer5M: p.method = Method::LaneData; break;
+                default: p.method = Method::ZmodNfc; break;
+                }
+            }
             p.port = constrain(o["port"] | 0, 0, 65535);
+            bool external = p.model == Model::Bambu || p.model == Model::Creality;
+            p.unit = constrain(o["unit"] | p.unit, external ? EXTERNAL_SPOOL : 1, 4);
+            if (p.model == Model::Adventurer5M) p.unit = 1;
+            p.slotsFound = constrain(o["slots_found"] | p.slotsFound, 0, SLOT_COUNT);
+            // Another printer, method or group of four: count its slots again.
+            if (keep >= 0 && keep < (int)config.printers.size()) {
+                const PrinterConfig &old = config.printers[keep];
+                if (old.host != p.host || old.port != p.port || old.method != p.method || old.unit != p.unit)
+                    p.slotsFound = 0;
+            }
             // Settings saved before the fixed slot moved into each printer
             // had one auto_slot for all printers.
-            p.slot = constrain(o["slot"] | (in["auto_slot"] | 0), p.canAsk() ? 0 : 1, SLOT_COUNT);
+            p.slot = constrain(o["slot"] | (in["auto_slot"] | 0), p.canAsk() ? 0 : 1, p.slotCount());
             p.serial = o["serial"] | "";
             p.serial.trim();
             readSecret(o, "check_code", p.checkCode);
@@ -278,6 +361,8 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
             if (!p.name.length()) p.name = p.host;
             if (p.method == Method::Stock && (!p.serial.length() || !p.checkCode.length()))
                 return p.name + ": stock firmware needs the serial number and check code";
+            if (p.method == Method::Bambu && (!p.serial.length() || !p.checkCode.length()))
+                return p.name + ": a Bambu printer needs its serial number and access code";
             list.push_back(p);
         }
         next.printers = list;
@@ -308,8 +393,48 @@ String slotName(const PrinterConfig &printer, int slot) {
     switch (printer.model) {
     case Model::Creator5: return "T" + String(slot - 1);
     case Model::SnapmakerU1: return "Head " + String(slot);
+    case Model::Bambu:
+        return printer.unit == EXTERNAL_SPOOL ? String("Ext") : String((char)('A' + printer.unit - 1)) + String(slot);
+    case Model::Adventurer5M: return "T0";
+    case Model::Anycubic:
+        return printer.unit <= 1 ? "Slot " + String(slot) : "ACE " + String(printer.unit) + " slot " + String(slot);
+    case Model::Qidi:
+        return printer.unit <= 1 ? "Slot " + String(slot) : "Box " + String(printer.unit) + " slot " + String(slot);
+    case Model::Creality:
+        // As Creality names them: CFS 1 slots 1A-1D.
+        return printer.unit == EXTERNAL_SPOOL ? String("Ext") : String(printer.unit) + (char)('A' + slot - 1);
+    case Model::Klipper: {
+        int index = printer.slotIndex(slot);
+        if (printer.method == Method::HappyHare) return "Gate " + String(index);
+        if (printer.method == Method::Afc) return "lane" + String(index + 1);
+        return "T" + String(index);
+    }
     default: return "Slot " + String(slot);
     }
+}
+
+String slotShortName(const PrinterConfig &printer, int slot) {
+    if (slot <= 0) return "Ask";
+    switch (printer.model) {
+    case Model::Creator5:
+    case Model::Bambu:
+    case Model::Creality:
+    case Model::Adventurer5M: return slotName(printer, slot);
+    case Model::Anycubic:
+    case Model::Qidi: return printer.unit <= 1 ? String(slot) : String(printer.unit) + "-" + String(slot);
+    case Model::Klipper: {
+        int index = printer.slotIndex(slot);
+        if (printer.method == Method::HappyHare) return String(index);
+        if (printer.method == Method::Afc) return String(index + 1);
+        return "T" + String(index);
+    }
+    default: return String(slot);
+    }
+}
+
+bool takesSpoolOnlyTags(Method method) {
+    return method == Method::Snapmaker || method == Method::HappyHare || method == Method::Afc ||
+           method == Method::LaneData;
 }
 
 void loadConfig(Config &config) {

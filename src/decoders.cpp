@@ -265,6 +265,7 @@ Filament decodeBambu(const Tag &tag, const std::vector<NdefRecord> &) {
     normalizeMaterial(material, f.material, f.modifiers);
     if (modifier.length() && modifier != material) addModifier(f.modifiers, modifier);
     f.brand = "Bambu Lab";
+    f.presetId = ascii(d + 24, 8);
     f.color = rgb(d[80], d[81], d[82]);
     f.alpha = d[83];
     f.weight = le16(d + 84);
@@ -314,6 +315,7 @@ Filament decodeCreality(const Tag &tag, const std::vector<NdefRecord> &) {
     int meters = length.toInt();
     f.weight = meters == 165 ? 500 : meters == 80 ? 250 : 1000;
     String code = text.substring(12, 17);
+    if (isDigits(code)) f.presetId = code;
     for (auto &m : CREALITY_MATERIALS) {
         if (code != m.code) continue;
         f.material = m.material;

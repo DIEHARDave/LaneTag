@@ -5,6 +5,9 @@
 #include <math.h>
 #include <mbedtls/base64.h>
 
+#include "anycubic.h"
+#include "bambu.h"
+#include "creality.h"
 #include "decoders.h"
 
 namespace {
@@ -430,16 +433,16 @@ SlotList basicSlots(const PrinterConfig &printer) {
     return list;
 }
 
-// Moonraker lane_data, read by OrcaSlicer: the slot's entry (found by its
-// "lane" field, as keys differ between printers) gets the spool's details;
-// other writers' keys stay.
-String writeLaneData(const PrinterConfig &printer, int slot, const Tag &tag, const Filament &f,
+// Moonraker lane_data, read by OrcaSlicer: the entry of the 0-based lane
+// (found by its "lane" field, as keys differ between printers) gets the
+// spool's details; other writers' keys stay.
+String writeLaneData(const PrinterConfig &printer, int index, const Tag &tag, const Filament &f,
                      const String &material, const String &color) {
     HttpResult current = moonraker(printer, "/server/database/item?namespace=lane_data", "GET");
     JsonDocument entries;
     if (current.ok()) deserializeJson(entries, current.body);
     JsonObjectConst value = entries["result"]["value"];
-    String lane = String(slot - 1), key = "lane" + String(slot);
+    String lane = String(index), key = "lane" + String(index + 1);
     for (JsonPairConst entry : value) {
         if (entry.value()["lane"].as<String>() == lane) {
             key = entry.key().c_str();
@@ -519,7 +522,7 @@ PrinterReply basicAssign(const PrinterConfig &printer, const Tag &tag, const Fil
         reply.message = moonrakerFailure(result, doc);
         return reply;
     }
-    String lane = writeLaneData(printer, slot, tag, f, material, color);
+    String lane = writeLaneData(printer, slot - 1, tag, f, material, color);
     reply.ok = true;
     reply.message = label + " is now " + material + " #" + color + ". " + notes + lane;
     reply.message.trim();
@@ -744,7 +747,8 @@ PrinterReply u1Assign(const PrinterConfig &printer, const Tag &tag, const Filame
     if (!result.ok()) {
         JsonDocument doc;
         deserializeJson(doc, result.body);
-        reply.message = result.code == 404 ? String("No filament_detect/set endpoint: this needs the Extended firmware")
+        reply.message = result.code == 404 ? String("No filament_detect/set endpoint: this needs the Extended firmware "
+                                                    "(pick the U1's Stock firmware method without it)")
                                            : moonrakerFailure(result, doc);
         return reply;
     }
@@ -786,6 +790,756 @@ PrinterReply u1Assign(const PrinterConfig &printer, const Tag &tag, const Filame
     return reply;
 }
 
+// --- Klipper: Happy Hare, AFC and plain lane_data ---------------------------------
+//
+// Each reader covers four gates, lanes or tools of the printer
+// (PrinterConfig::unit). Spoolman, when the printer has it, is reached
+// through the MMU software's own commands, so its gate map stays in charge.
+
+// A G-code parameter value: Klipper splits parameters shell-style and cuts
+// comments at '#' and ';'.
+String gcodeValue(String text) {
+    for (const char *bad : {"\"", "#", ";", "\n", "\r"}) text.replace(bad, "");
+    text.trim();
+    return "\"" + text + "\"";
+}
+
+PrinterReply runGcode(const PrinterConfig &printer, const String &script) {
+    PrinterReply reply;
+    JsonDocument cmd;
+    cmd["script"] = script;
+    String body;
+    serializeJson(cmd, body);
+    HttpResult result = moonraker(printer, "/printer/gcode/script", "POST", body, 20000);
+    if (result.ok()) {
+        reply.ok = true;
+        return reply;
+    }
+    JsonDocument doc;
+    deserializeJson(doc, result.body);
+    reply.message = moonrakerFailure(result, doc);
+    return reply;
+}
+
+bool queryObjects(const PrinterConfig &printer, const String &query, JsonDocument &status, String &error) {
+    HttpResult result = moonraker(printer, "/printer/objects/query?" + query, "GET");
+    JsonDocument doc;
+    if (deserializeJson(doc, result.body) || !result.ok()) {
+        error = moonrakerFailure(result, doc);
+        return false;
+    }
+    status.set(doc["result"]["status"]);
+    return true;
+}
+
+bool hasComponent(const PrinterConfig &printer, const char *name) {
+    HttpResult result = moonraker(printer, "/server/info", "GET");
+    JsonDocument doc;
+    if (!result.ok() || deserializeJson(doc, result.body)) return false;
+    for (JsonVariantConst c : doc["result"]["components"].as<JsonArrayConst>())
+        if (c.as<String>() == name) return true;
+    return false;
+}
+
+int tagSpoolId(const Filament &f) { return f.spoolId > 0 && f.spoolId < MAX_SPOOLMAN_ID ? f.spoolId : 0; }
+
+// "RRGGBB" from "#rrggbb", "rrggbbaa" and the like; "" for color names.
+String hexColor(String color) {
+    color.replace("#", "");
+    if (color.length() < 6) return "";
+    for (int i = 0; i < 6; i++)
+        if (!isxdigit((unsigned char)color[i])) return "";
+    color = color.substring(0, 6);
+    color.toUpperCase();
+    return color;
+}
+
+String filamentName(const Filament &f) {
+    if (f.name.length()) return f.name;
+    String name = upper(f.material);
+    if (f.modifiers.length()) name += " " + f.modifiers;
+    return name;
+}
+
+String describeSlot(const SlotInfo &s, int spoolId) {
+    String text = s.label + " is now " + (s.material.length() ? s.material : String("?"));
+    if (s.color.length()) text += " #" + s.color;
+    if (spoolId > 0) text += " (Spoolman spool " + String(spoolId) + ")";
+    return text;
+}
+
+// Happy Hare --------------------------------------------------------------------
+
+const char *const HH_FIELDS = "mmu=num_gates,gate_status,gate_material,gate_color,gate_color_rgb,"
+                              "gate_filament_name,gate_spool_id,spoolman_support";
+
+bool hhStatus(const PrinterConfig &printer, JsonDocument &mmu, String &error) {
+    JsonDocument status;
+    if (!queryObjects(printer, HH_FIELDS, status, error)) return false;
+    mmu.set(status["mmu"]);
+    if (mmu.isNull() || !(mmu["num_gates"] | 0)) {
+        error = "Happy Hare is not installed on this printer (no mmu object)";
+        return false;
+    }
+    return true;
+}
+
+SlotInfo hhGate(const PrinterConfig &printer, const JsonDocument &mmu, int slot) {
+    int gate = printer.slotIndex(slot);
+    SlotInfo info;
+    info.slot = slot;
+    info.label = "Gate " + String(gate);
+    info.material = mmu["gate_material"][gate] | "";
+    info.color = hexColor(mmu["gate_color"][gate] | "");
+    // Colors given by name ("red") are only in gate_color_rgb.
+    JsonArrayConst rgb = mmu["gate_color_rgb"][gate];
+    if (!info.color.length() && rgb.size() >= 3) {
+        char hex[8];
+        snprintf(hex, sizeof(hex), "%02X%02X%02X", (int)(rgb[0].as<float>() * 255 + 0.5f),
+                 (int)(rgb[1].as<float>() * 255 + 0.5f), (int)(rgb[2].as<float>() * 255 + 0.5f));
+        info.color = hex;
+    }
+    info.loaded = (mmu["gate_status"][gate] | -1) > 0;
+    return info;
+}
+
+String hhNoGates(const PrinterConfig &printer, int gates) {
+    return "Happy Hare has " + String(gates) + " gates; this reader starts at gate " +
+           String(printer.slotIndex(1));
+}
+
+SlotList hhSlots(const PrinterConfig &printer) {
+    SlotList list;
+    JsonDocument mmu;
+    if (!hhStatus(printer, mmu, list.error)) return list;
+    int gates = mmu["num_gates"] | 0;
+    for (int slot = 1; slot <= SLOT_COUNT && printer.slotIndex(slot) < gates; slot++)
+        list.slots.push_back(hhGate(printer, mmu, slot));
+    if (list.slots.empty()) {
+        list.error = hhNoGates(printer, gates);
+        return list;
+    }
+    list.ok = true;
+    return list;
+}
+
+PrinterReply hhAssign(const PrinterConfig &printer, const Tag &tag, const Filament &f, int slot) {
+    PrinterReply reply;
+    JsonDocument mmu;
+    if (!hhStatus(printer, mmu, reply.message)) return reply;
+    int gate = printer.slotIndex(slot), gates = mmu["num_gates"] | 0;
+    if (gate >= gates) {
+        reply.message = "Happy Hare has gates 0 to " + String(gates - 1) + "; there is no gate " + String(gate);
+        return reply;
+    }
+    String spoolman = mmu["spoolman_support"] | "off";
+    int spoolId = spoolman != "off" ? tagSpoolId(f) : 0;
+    String script;
+    if (spoolman == "pull") {
+        // The gate map comes from Spoolman: only a spool can be assigned.
+        if (!spoolId) {
+            reply.message = "Happy Hare takes its gate map from Spoolman (spoolman_support: pull); "
+                            "only tags naming a Spoolman spool can change a gate";
+            return reply;
+        }
+        script = "MMU_SPOOLMAN GATE=" + String(gate) + " SPOOLID=" + String(spoolId) + " QUIET=1";
+    } else {
+        if (!f.hasFilamentData() && !spoolId) {
+            reply.message = tagSpoolId(f) ? "The tag only names a Spoolman spool, and Happy Hare has no Spoolman"
+                                          : "No filament data on this tag";
+            return reply;
+        }
+        script = "MMU_GATE_MAP GATE=" + String(gate) + " QUIET=1";
+        if (f.material.length()) script += " MATERIAL=" + gcodeValue(upper(f.material));
+        if (f.color >= 0) script += " COLOR=" + f.colorHex();
+        if (f.hasFilamentData()) script += " NAME=" + gcodeValue(filamentName(f));
+        if (f.brand.length()) script += " VENDOR=" + gcodeValue(f.brand);
+        if (f.nozzleTemp()) script += " TEMP=" + String(f.nozzleTemp());
+        // Without a spool on the tag, the gate's old spool no longer applies.
+        if (spoolman != "off") script += " SPOOLID=" + String(spoolId ? spoolId : -1);
+        // Kept with the gate by Happy Hare 4 (older versions ignore it).
+        script += " RFID=" + tag.uidHex();
+    }
+    PrinterReply run = runGcode(printer, script);
+    if (!run.ok) return run;
+    if (!hhStatus(printer, mmu, reply.message)) return reply;
+    SlotInfo now = hhGate(printer, mmu, slot);
+    reply.ok = true;
+    reply.spoolId = mmu["gate_spool_id"][gate] | 0;
+    reply.title = mmu["gate_filament_name"][gate] | "";
+    reply.message = describeSlot(now, reply.spoolId);
+    if (spoolId && reply.spoolId != spoolId)
+        reply.ok = false, reply.message += "; Happy Hare did not take Spoolman spool " + String(spoolId);
+    return reply;
+}
+
+// AFC --------------------------------------------------------------------------------
+
+struct AfcLane {
+    String name;
+    String object;      // Klipper object: "AFC_stepper lane1", "AFC_lane lane1", ...
+};
+
+// The printer's lanes in AFC's order, and whether AFC has Spoolman.
+bool afcLanes(const PrinterConfig &printer, std::vector<AfcLane> &lanes, bool &spoolman, String &error) {
+    JsonDocument status;
+    if (!queryObjects(printer, "AFC=lanes,spoolman", status, error)) return false;
+    JsonArrayConst names = status["AFC"]["lanes"];
+    if (!names.size()) {
+        error = "AFC is not installed on this printer, or has no lanes";
+        return false;
+    }
+    String url = status["AFC"]["spoolman"] | "";
+    spoolman = url.length() > 0;
+    HttpResult result = moonraker(printer, "/printer/objects/list", "GET");
+    JsonDocument list;
+    if (deserializeJson(list, result.body) || !result.ok()) {
+        error = moonrakerFailure(result, list);
+        return false;
+    }
+    lanes.clear();
+    for (JsonVariantConst n : names) {
+        AfcLane lane;
+        lane.name = n.as<String>();
+        for (JsonVariantConst o : list["result"]["objects"].as<JsonArrayConst>()) {
+            String object = o.as<String>();
+            if (object.startsWith("AFC_") && object.endsWith(" " + lane.name)) {
+                lane.object = object;
+                break;
+            }
+        }
+        lanes.push_back(lane);
+    }
+    return true;
+}
+
+bool afcLaneStatus(const PrinterConfig &printer, const AfcLane &lane, JsonDocument &out, String &error) {
+    if (!lane.object.length()) {
+        error = "no Klipper object for AFC lane " + lane.name;
+        return false;
+    }
+    String object = lane.object;
+    object.replace(" ", "%20");
+    JsonDocument status;
+    if (!queryObjects(printer, object + "=material,color,spool_id,load,prep,filament_name", status, error))
+        return false;
+    out.set(status[lane.object]);
+    return true;
+}
+
+SlotInfo afcSlot(int slot, const AfcLane &lane, const JsonDocument &status) {
+    SlotInfo info;
+    info.slot = slot;
+    info.label = lane.name;
+    info.material = status["material"] | "";
+    info.color = hexColor(status["color"] | "");
+    info.loaded = (status["load"] | false) || (status["prep"] | false);
+    return info;
+}
+
+String afcNoLanes(const PrinterConfig &printer, size_t count) {
+    return "AFC has " + String(count) + " lanes; this reader starts at lane " + String(printer.slotIndex(1) + 1);
+}
+
+SlotList afcSlots(const PrinterConfig &printer) {
+    SlotList list;
+    std::vector<AfcLane> lanes;
+    bool spoolman;
+    if (!afcLanes(printer, lanes, spoolman, list.error)) return list;
+    for (int slot = 1; slot <= SLOT_COUNT && printer.slotIndex(slot) < (int)lanes.size(); slot++) {
+        const AfcLane &lane = lanes[printer.slotIndex(slot)];
+        JsonDocument status;
+        if (!afcLaneStatus(printer, lane, status, list.error)) {
+            list.slots.clear();
+            return list;
+        }
+        list.slots.push_back(afcSlot(slot, lane, status));
+    }
+    if (list.slots.empty()) {
+        if (!list.error.length()) list.error = afcNoLanes(printer, lanes.size());
+        return list;
+    }
+    list.ok = true;
+    return list;
+}
+
+PrinterReply afcAssign(const PrinterConfig &printer, const Filament &f, int slot) {
+    PrinterReply reply;
+    std::vector<AfcLane> lanes;
+    bool spoolman;
+    if (!afcLanes(printer, lanes, spoolman, reply.message)) return reply;
+    int index = printer.slotIndex(slot);
+    if (index >= (int)lanes.size()) {
+        reply.message = "AFC has " + String(lanes.size()) + " lanes; there is no lane " + String(index + 1);
+        return reply;
+    }
+    const AfcLane &lane = lanes[index];
+    JsonDocument status;
+    if (!afcLaneStatus(printer, lane, status, reply.message)) return reply;
+    int spoolId = spoolman ? tagSpoolId(f) : 0;
+    String laneArg = " LANE=" + lane.name;
+    String script;
+    if (spoolId) {
+        // AFC takes material, color, temperatures and weight from Spoolman.
+        script = "SET_SPOOL_ID" + laneArg + " SPOOL_ID=" + String(spoolId);
+    } else {
+        if (!f.hasFilamentData()) {
+            reply.message = tagSpoolId(f) ? "The tag only names a Spoolman spool, and AFC has no Spoolman"
+                                          : "No filament data on this tag";
+            return reply;
+        }
+        // The lane's old Spoolman spool no longer applies; clearing it also
+        // clears the lane's values, so it goes first.
+        if (spoolman && (status["spool_id"] | 0)) script += "SET_SPOOL_ID" + laneArg + " SPOOL_ID=\n";
+        script += "SET_MATERIAL" + laneArg + " MATERIAL=" +
+                  gcodeValue(upper(f.material.length() ? f.material : String("PLA")));
+        if (f.color >= 0) script += "\nSET_COLOR" + laneArg + " COLOR=" + f.colorHex();
+        if (f.nozzleTemp() || f.bedTemp) {
+            script += "\nAFC_SET_SPOOL_TEMP" + laneArg;
+            if (f.nozzleTemp()) script += " EXTRUDER_TEMP=" + String(f.nozzleTemp());
+            if (f.bedTemp) script += " BED_TEMP=" + String(f.bedTemp);
+        }
+    }
+    PrinterReply run = runGcode(printer, script);
+    if (!run.ok) return run;
+    if (!afcLaneStatus(printer, lane, status, reply.message)) return reply;
+    SlotInfo now = afcSlot(slot, lane, status);
+    reply.ok = true;
+    reply.spoolId = status["spool_id"] | 0;
+    reply.title = status["filament_name"] | "";
+    reply.message = describeSlot(now, reply.spoolId);
+    // AFC reports refusals (spool already on another lane, no weight left)
+    // in its console, not as errors.
+    if (spoolId && reply.spoolId != spoolId)
+        reply.ok = false, reply.message += "; AFC did not take Spoolman spool " + String(spoolId) + " (see its console)";
+    return reply;
+}
+
+// Snapmaker U1, stock firmware ---------------------------------------------------------
+//
+// Without the Extended firmware there is no filament_detect/set endpoint, but
+// Snapmaker's own SET_PRINT_FILAMENT_CONFIG sets a head's filament the way an
+// edit on the screen does (vendor, type, subtype, color), through Moonraker.
+
+PrinterReply u1StockAssign(const PrinterConfig &printer, const Filament &f, int head) {
+    PrinterReply reply;
+    if (head < 1 || head > U1_HEADS) {
+        reply.message = "The U1 has heads 1 to " + String(U1_HEADS);
+        return reply;
+    }
+    if (!f.hasFilamentData()) {
+        reply.message = f.spoolId ? "The tag only names Spoolman spool " + String(f.spoolId) +
+                                        "; the U1's stock firmware cannot look it up"
+                                  : "No filament data on this tag";
+        return reply;
+    }
+    JsonDocument status;
+    if (!u1Status(printer, status, reply.message)) return reply;
+    String state = status["print_stats"]["state"] | "";
+    if (state == "printing" || state == "paused") {
+        reply.message = "The printer is printing; heads are not changed while it prints";
+        return reply;
+    }
+    // As the Extended method names a read: Snapmaker's own filament with its
+    // subtype, anything else as Generic, so the slicer finds a profile.
+    bool snapmaker = f.brand.equalsIgnoreCase("Snapmaker");
+    String type = upper(f.material.length() ? f.material : String("PLA"));
+    char rgba[12];
+    snprintf(rgba, sizeof(rgba), "%06X%02X", (unsigned)(f.color >= 0 ? f.color & 0xFFFFFF : 0xFFFFFF), f.alpha);
+    String script = "SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER=" + String(head - 1) +
+                    " VENDOR=" + gcodeValue(snapmaker ? "Snapmaker" : "Generic") +
+                    " FILAMENT_TYPE=" + gcodeValue(type) +
+                    " FILAMENT_SUBTYPE=" + gcodeValue(snapmaker ? f.modifiers : String()) +
+                    " FILAMENT_COLOR_RGBA=" + rgba;
+    PrinterReply run = runGcode(printer, script);
+    if (!run.ok) {
+        if (run.message.indexOf("Unknown command") >= 0)
+            run.message = "this printer has no SET_PRINT_FILAMENT_CONFIG (is it a Snapmaker U1?)";
+        return run;
+    }
+    if (!u1Status(printer, status, reply.message)) return reply;
+    SlotInfo now = u1Head(status, head);
+    String want = String(rgba).substring(0, 6);
+    String nowType = status["print_task_config"]["filament_type"][head - 1] | "";
+    if (!upper(nowType).equals(type) || !now.color.equalsIgnoreCase(want)) {
+        reply.message = now.label + " is still " + (now.material.length() ? now.material + " #" + now.color : "empty") +
+                        "; the printer did not take the change";
+        return reply;
+    }
+    reply.ok = true;
+    reply.title = now.material;
+    reply.message = now.label + " is now " + now.material + " #" + now.color;
+    return reply;
+}
+
+// Qidi Box (Plus4 / Q2 / Max4, stock firmware) ---------------------------------------
+//
+// The Box keeps each slot in Klipper's save_variables as three row ids into
+// the printer's officiall_filas_list.cfg (Qidi's spelling): filament_slotN
+// ([filaN] profiles), color_slotN ([colordict]) and vendor_slotN
+// ([vendor_list]); N is 0-15 over up to four Boxes. Its RFID reader, Qidi
+// Studio and the screen write those same variables, so a scan does too, with
+// stock SAVE_VARIABLE (as qidi-spoolman-sync and HelixScreen do).
+
+// Whether any word (2+ letters) of words appears in text, ignoring case.
+bool hasWord(const String &text, const String &words) {
+    String h = upper(text), w = upper(words);
+    int start = 0;
+    while (start < (int)w.length()) {
+        int end = w.indexOf(' ', start);
+        if (end < 0) end = w.length();
+        String word = w.substring(start, end);
+        if (word.length() > 1 && h.indexOf(word) >= 0) return true;
+        start = end + 1;
+    }
+    return false;
+}
+
+struct QidiFila {
+    int id;
+    String name;    // "PLA Rapido"
+    String type;    // "PLA"
+};
+
+struct QidiTables {
+    std::vector<QidiFila> filas;
+    std::vector<std::pair<int, uint32_t>> colors;   // colordict: id -> RRGGBB
+    std::vector<std::pair<int, String>> vendors;    // vendor_list: id -> name
+};
+
+const char *const QIDI_TABLES = "officiall_filas_list.cfg";
+
+bool qidiTables(const PrinterConfig &printer, QidiTables &t, String &error) {
+    HttpResult result = moonraker(printer, "/server/files/config/" + String(QIDI_TABLES), "GET");
+    if (!result.ok()) {
+        error = result.code == 404 ? "the printer has no " + String(QIDI_TABLES) + " (is it a Qidi with a Box?)"
+                                   : "could not read " + String(QIDI_TABLES) + " (" + String(result.code) + ")";
+        return false;
+    }
+    String section;
+    QidiFila fila{0, "", ""};
+    auto flush = [&]() {
+        if (fila.id > 0 && fila.name.length() && fila.type.length()) t.filas.push_back(fila);
+        fila = QidiFila{0, "", ""};
+    };
+    int start = 0;
+    const String &text = result.body;
+    while (start < (int)text.length()) {
+        int end = text.indexOf('\n', start);
+        if (end < 0) end = text.length();
+        String line = text.substring(start, end);
+        start = end + 1;
+        line.trim();
+        if (!line.length() || line[0] == ';' || line[0] == '#') continue;
+        if (line[0] == '[') {
+            flush();
+            section = line.substring(1, line.indexOf(']'));
+            section.trim();
+            if (section.startsWith("fila")) fila.id = section.substring(4).toInt();
+            continue;
+        }
+        int eq = line.indexOf('=');
+        if (eq < 0) continue;
+        String key = line.substring(0, eq), value = line.substring(eq + 1);
+        key.trim();
+        value.trim();
+        if (fila.id > 0) {
+            if (key == "filament") fila.name = value;
+            else if (key == "type") fila.type = upper(value);
+        } else if (section == "colordict") {
+            int32_t c = parseColor(value);
+            if (c >= 0) t.colors.push_back({key.toInt(), (uint32_t)c});
+        } else if (section == "vendor_list") {
+            t.vendors.push_back({key.toInt(), value});
+        }
+    }
+    flush();
+    if (t.filas.empty() || t.colors.empty()) {
+        error = String(QIDI_TABLES) + " has no filament or color list";
+        return false;
+    }
+    return true;
+}
+
+// The Box's filament for a tag: profiles of the tag's material (else its base
+// material), preferring one named for the tag's modifiers ("PLA Silk"), then
+// "Basic", then the bare material name, then the lowest id.
+int qidiFila(const QidiTables &t, const Filament &f) {
+    String material = upper(f.material.length() ? f.material : String("PLA"));
+    if (material == "PLA+" || material == "PLA PLUS") material = "PLA";
+    if (material == "PETG+") material = "PETG";
+    int dash = material.indexOf('-');
+    for (const String &type : {material, dash > 0 ? material.substring(0, dash) : material}) {
+        const QidiFila *best = nullptr;
+        int bestScore = -1;
+        for (auto &fila : t.filas) {
+            if (fila.type != type) continue;
+            String name = upper(fila.name);
+            int score = 0;
+            if (f.modifiers.length() && hasWord(name, f.modifiers)) score += 4;
+            if (name.indexOf("BASIC") >= 0) score += 2;
+            if (name == type) score += 1;
+            if (score > bestScore || (score == bestScore && fila.id < best->id)) best = &fila, bestScore = score;
+        }
+        if (best) return best->id;
+    }
+    return 0;
+}
+
+int qidiColor(const QidiTables &t, uint32_t color) {
+    double source[3];
+    toLab(color, source);
+    int best = t.colors[0].first;
+    double bestDistance = 1e18;
+    for (auto &c : t.colors) {
+        double lab[3];
+        toLab(c.second, lab);
+        double d = deltaE2000(source, lab);
+        if (d < bestDistance) bestDistance = d, best = c.first;
+    }
+    return best;
+}
+
+// The tag's brand when the Box knows it, else Generic.
+int qidiVendor(const QidiTables &t, const Filament &f) {
+    int generic = 0;
+    for (auto &v : t.vendors) {
+        if (v.second.equalsIgnoreCase("Generic")) generic = v.first;
+        if (f.brand.length() && (v.second.equalsIgnoreCase(f.brand) || upper(f.brand).startsWith(upper(v.second))))
+            return v.first;
+    }
+    return generic;
+}
+
+const char *const QIDI_NEWER = "this Qidi firmware keeps Box slots in a newer format (filament codes such as "
+                               "\"QFA00\") that LaneTag does not support yet";
+
+bool qidiStatus(const PrinterConfig &printer, JsonDocument &vars, String &state, String &error) {
+    JsonDocument status;
+    if (!queryObjects(printer, "save_variables&print_stats=state", status, error)) return false;
+    vars.set(status["save_variables"]["variables"]);
+    state = status["print_stats"]["state"] | "";
+    if (vars.isNull() || !(vars["box_count"] | 0)) {
+        error = "the printer reports no Qidi Box (save_variables box_count)";
+        return false;
+    }
+    int boxes = vars["box_count"] | 0;
+    if (printer.unit > boxes) {
+        error = "the printer has " + String(boxes) + (boxes == 1 ? " Box" : " Boxes") + "; there is no Box " +
+                String(printer.unit);
+        return false;
+    }
+    // Newer firmware stores codes and color lists instead of row ids.
+    for (int slot = 1; slot <= SLOT_COUNT; slot++) {
+        String n = String(printer.slotIndex(slot));
+        if (vars["filament_slot" + n].is<const char *>() && !String(vars["filament_slot" + n] | "").toInt() &&
+            String(vars["filament_slot" + n] | "") != "0") {
+            error = QIDI_NEWER;
+            return false;
+        }
+        if (vars["color_slot" + n].is<JsonArrayConst>()) {
+            error = QIDI_NEWER;
+            return false;
+        }
+    }
+    return true;
+}
+
+// save_variables ids are ints; Qidi Studio writes them quoted ("5").
+int qidiId(JsonVariantConst v) {
+    if (v.is<int>()) return v.as<int>();
+    if (v.is<const char *>()) return String(v.as<const char *>()).toInt();
+    return 0;
+}
+
+SlotInfo qidiSlot(const PrinterConfig &printer, const QidiTables &t, const JsonDocument &vars, int slot) {
+    String n = String(printer.slotIndex(slot));
+    SlotInfo info;
+    info.slot = slot;
+    info.label = slotName(printer, slot);
+    int fila = qidiId(vars["filament_slot" + n]), color = qidiId(vars["color_slot" + n]);
+    for (auto &f : t.filas)
+        if (f.id == fila) info.material = f.name;
+    if (info.material.length()) {
+        for (auto &c : t.colors) {
+            if (c.first != color) continue;
+            char hex[8];
+            snprintf(hex, sizeof(hex), "%06X", (unsigned)c.second);
+            info.color = hex;
+        }
+    }
+    info.loaded = qidiId(vars["slot" + n]) > 0;
+    return info;
+}
+
+SlotList qidiSlots(const PrinterConfig &printer) {
+    SlotList list;
+    QidiTables t;
+    JsonDocument vars;
+    String state;
+    if (!qidiStatus(printer, vars, state, list.error) || !qidiTables(printer, t, list.error)) return list;
+    for (int slot = 1; slot <= printer.slotCount(); slot++) list.slots.push_back(qidiSlot(printer, t, vars, slot));
+    list.ok = true;
+    return list;
+}
+
+PrinterReply qidiAssign(const PrinterConfig &printer, const Filament &f, int slot) {
+    PrinterReply reply;
+    if (slot < 1 || slot > printer.slotCount()) {
+        reply.message = "no such slot";
+        return reply;
+    }
+    if (!f.hasFilamentData()) {
+        reply.message = f.spoolId ? "The tag only names Spoolman spool " + String(f.spoolId) +
+                                        "; the Qidi Box cannot look it up"
+                                  : "No filament data on this tag";
+        return reply;
+    }
+    QidiTables t;
+    JsonDocument vars;
+    String state;
+    if (!qidiStatus(printer, vars, state, reply.message) || !qidiTables(printer, t, reply.message)) return reply;
+    if (state == "printing" || state == "paused") {
+        reply.message = "The printer is printing; Box slots are not changed while it prints";
+        return reply;
+    }
+    int fila = qidiFila(t, f);
+    if (!fila) {
+        reply.message = f.material + " is not a material in the printer's filament list";
+        return reply;
+    }
+    uint32_t color = f.color >= 0 ? f.color & 0xFFFFFF : 0xFFFFFF;
+    int colorId = qidiColor(t, color), vendor = qidiVendor(t, f);
+    String n = String(printer.slotIndex(slot));
+    String script = "SAVE_VARIABLE VARIABLE=filament_slot" + n + " VALUE=" + String(fila) +
+                    "\nSAVE_VARIABLE VARIABLE=color_slot" + n + " VALUE=" + String(colorId) +
+                    "\nSAVE_VARIABLE VARIABLE=vendor_slot" + n + " VALUE=" + String(vendor);
+    PrinterReply run = runGcode(printer, script);
+    if (!run.ok) return run;
+    if (!qidiStatus(printer, vars, state, reply.message)) return reply;
+    SlotInfo now = qidiSlot(printer, t, vars, slot);
+    if (qidiId(vars["filament_slot" + n]) != fila || qidiId(vars["color_slot" + n]) != colorId) {
+        reply.message = now.label + " did not take the change";
+        return reply;
+    }
+    reply.ok = true;
+    reply.title = now.material;
+    reply.message = now.label + " is now " + now.material + " #" + now.color;
+    char hex[8];
+    snprintf(hex, sizeof(hex), "%06X", (unsigned)color);
+    if (f.color >= 0 && now.color != hex) reply.message += " (the Box's closest color to #" + String(hex) + ")";
+    return reply;
+}
+
+// Plain lane_data ---------------------------------------------------------------------
+
+// The printer's tools: Klipper's extruder, extruder1, extruder2, ...
+int klipperTools(const PrinterConfig &printer, String &error) {
+    HttpResult result = moonraker(printer, "/printer/objects/list", "GET");
+    JsonDocument doc;
+    if (deserializeJson(doc, result.body) || !result.ok()) {
+        error = moonrakerFailure(result, doc);
+        return -1;
+    }
+    int tools = 0;
+    for (JsonVariantConst o : doc["result"]["objects"].as<JsonArrayConst>()) {
+        String name = o.as<String>();
+        if (!name.startsWith("extruder")) continue;
+        bool numbered = true;
+        for (unsigned i = 8; i < name.length(); i++)
+            if (!isdigit((unsigned char)name[i])) numbered = false;
+        if (numbered) tools++;
+    }
+    if (!tools) error = "Klipper reports no extruder";
+    return tools;
+}
+
+String noTool(const PrinterConfig &printer, int tools, int index) {
+    return "the printer has " + String(tools) + (tools == 1 ? " tool (T0)" : " tools (T0-T" + String(tools - 1) + ")") +
+           "; there is no T" + String(index);
+}
+
+SlotList laneDataSlots(const PrinterConfig &printer) {
+    SlotList list;
+    int tools = klipperTools(printer, list.error);
+    if (tools <= 0) return list;
+    if (printer.slotIndex(1) >= tools) {
+        list.error = noTool(printer, tools, printer.slotIndex(1));
+        return list;
+    }
+    HttpResult result = moonraker(printer, "/server/database/item?namespace=lane_data", "GET");
+    JsonDocument doc;
+    deserializeJson(doc, result.body);
+    // Moonraker answers 404 while nothing has written lane_data yet.
+    if (!result.ok() && result.code != 404) {
+        list.error = moonrakerFailure(result, doc);
+        return list;
+    }
+    for (int slot = 1; slot <= SLOT_COUNT && printer.slotIndex(slot) < tools; slot++) {
+        SlotInfo info;
+        info.slot = slot;
+        info.label = slotName(printer, slot);
+        String lane = String(printer.slotIndex(slot));
+        for (JsonPairConst entry : doc["result"]["value"].as<JsonObjectConst>()) {
+            if (entry.value()["lane"].as<String>() != lane) continue;
+            info.material = entry.value()["material"] | "";
+            info.color = hexColor(entry.value()["color"] | "");
+            info.loaded = info.material.length() > 0;
+        }
+        list.slots.push_back(info);
+    }
+    list.ok = true;
+    return list;
+}
+
+PrinterReply laneDataAssign(const PrinterConfig &printer, const Tag &tag, const Filament &f, int slot) {
+    PrinterReply reply;
+    int index = printer.slotIndex(slot);
+    int tools = klipperTools(printer, reply.message);
+    if (tools <= 0) return reply;
+    if (index >= tools) {
+        reply.message = noTool(printer, tools, index);
+        return reply;
+    }
+    int spoolId = tagSpoolId(f);
+    // T0 is a single-extruder printer's only tool: its spool is the one
+    // Spoolman tracks.
+    bool active = spoolId && index == 0 && hasComponent(printer, "spoolman");
+    if (!f.hasFilamentData() && !active) {
+        reply.message = spoolId ? "The tag only names Spoolman spool " + String(spoolId) +
+                                      ", which can only become the active spool of T0 (with Spoolman set up in Moonraker)"
+                                : "No filament data on this tag";
+        return reply;
+    }
+    String label = slotName(printer, slot);
+    if (f.hasFilamentData()) {
+        String material = upper(f.material.length() ? f.material : String("PLA"));
+        String color = f.color >= 0 ? f.colorHex() : String("FFFFFF");
+        String error = writeLaneData(printer, index, tag, f, material, color);
+        if (error.length()) {
+            reply.message = error;
+            return reply;
+        }
+        reply.message = label + " is now " + material + " #" + color + " in lane_data";
+    }
+    if (active) {
+        String body = "{\"spool_id\":" + String(spoolId) + "}";
+        HttpResult result = moonraker(printer, "/server/spoolman/spool_id", "POST", body);
+        String sep = reply.message.length() ? "; " : "";
+        if (!result.ok()) {
+            JsonDocument doc;
+            deserializeJson(doc, result.body);
+            reply.message += sep + "Spoolman spool not set: " + moonrakerFailure(result, doc);
+            return reply;
+        }
+        reply.spoolId = spoolId;
+        reply.message += sep + "Spoolman spool " + String(spoolId) + " is active";
+    }
+    reply.ok = true;
+    reply.title = f.title();
+    return reply;
+}
+
 }  // namespace
 
 PrinterReply sendScan(const PrinterConfig &printer, const Tag &tag, const String &readerName, int slot) {
@@ -801,6 +1555,14 @@ PrinterReply assignSlot(const PrinterConfig &printer, const Tag &tag, const Fila
     case Method::ZmodNfc: return zmodNfcAssign(printer, tag, slot, readerName);
     case Method::ZmodBasic: return basicAssign(printer, tag, filament, slot);
     case Method::Snapmaker: return u1Assign(printer, tag, filament, slot);
+    case Method::SnapmakerStock: return u1StockAssign(printer, filament, slot);
+    case Method::Bambu: return bambuAssign(printer, filament, slot);
+    case Method::HappyHare: return hhAssign(printer, tag, filament, slot);
+    case Method::Afc: return afcAssign(printer, filament, slot);
+    case Method::LaneData: return laneDataAssign(printer, tag, filament, slot);
+    case Method::CrealityCfs: return crealityAssign(printer, filament, slot);
+    case Method::AnycubicAce: return anycubicAssign(printer, filament, slot);
+    case Method::QidiBox: return qidiAssign(printer, filament, slot);
     default: return stockAssign(printer, filament, slot);
     }
 }
@@ -813,16 +1575,33 @@ SlotList listSlots(const PrinterConfig &printer) {
     switch (printer.method) {
     case Method::ZmodNfc: return zmodNfcSlots(printer);
     case Method::ZmodBasic: return basicSlots(printer);
-    case Method::Snapmaker: return u1Slots(printer);
+    case Method::Snapmaker:
+    case Method::SnapmakerStock: return u1Slots(printer);
+    case Method::Bambu: return bambuSlots(printer);
+    case Method::HappyHare: return hhSlots(printer);
+    case Method::Afc: return afcSlots(printer);
+    case Method::LaneData: return laneDataSlots(printer);
+    case Method::CrealityCfs: return crealitySlots(printer);
+    case Method::AnycubicAce: return anycubicSlots(printer);
+    case Method::QidiBox: return qidiSlots(printer);
     default: return stockSlots(printer);
     }
 }
 
-PrinterReply testPrinter(const PrinterConfig &printer) {
+bool learnSlots(PrinterConfig &printer, const SlotList &list) {
+    if (printer.model != Model::Klipper || !list.ok || list.slots.empty()) return false;
+    int found = min((int)list.slots.size(), SLOT_COUNT);
+    if (found == printer.slotsFound) return false;
+    printer.slotsFound = found;
+    printer.slot = constrain(printer.slot, printer.canAsk() ? 0 : 1, found);
+    return true;
+}
+
+PrinterReply testReply(const SlotList &slots) {
     PrinterReply reply;
-    SlotList slots = listSlots(printer);
     reply.ok = slots.ok;
-    reply.message = slots.ok ? "Connected; " + String(slots.slots.size()) + " slots" : slots.error;
+    size_t n = slots.slots.size();
+    reply.message = slots.ok ? "Connected; " + String(n) + (n == 1 ? " slot" : " slots") : slots.error;
     return reply;
 }
 

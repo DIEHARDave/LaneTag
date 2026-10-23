@@ -97,7 +97,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
 <section id="printers">
   <div class="card">
     <h2>Printers</h2>
-    <div class="hint">Pick a method per printer. <b>zmod_nfc</b> sends the whole tag to the zmod_nfc plugin, which shows its slot popup, matches Spoolman and fills lane data. <b>Zmod basic</b> sets slot color and material through Moonraker (no plugin needed). <b>Stock</b> uses Flashforge's local API: slot color and material only; it needs the printer's serial number and check code. A <b>Snapmaker U1</b> with paxx12's Extended firmware gets each scan as its head's own RFID read, and its SpoolLink matches the tag in Spoolman; each U1 reader is fixed to one head.</div>
+    <div class="hint">Pick a method per printer. <b>zmod_nfc</b> sends the whole tag to the zmod_nfc plugin, which shows its slot popup, matches Spoolman and fills lane data. <b>Zmod basic</b> sets slot color and material through Moonraker (no plugin needed). <b>Stock</b> uses Flashforge's local API: slot color and material only; it needs the printer's serial number and check code. A <b>Snapmaker U1</b> with paxx12's Extended firmware gets each scan as its head's own RFID read, and its SpoolLink matches the tag in Spoolman; each U1 reader is fixed to one head. On a U1 with Snapmaker's <b>stock firmware</b> a scan sets the head's material, vendor and color the way an edit on the screen does (no Spoolman matching). A <b>Bambu Lab</b> printer in LAN mode gets the tray's material, color and Generic preset over its MQTT broker; it needs the serial number and the LAN access code from the printer's network settings (newer firmware also needs Developer Mode). <b>Klipper</b> printers go through Moonraker: <b>Happy Hare</b> sets the MMU gate map, <b>AFC</b> (Box Turtle, Night Owl, ...) sets a lane, and <b>lane data</b> fills Moonraker's lane_data for OrcaSlicer on any Klipper printer (also the method for a <b>Flashforge AD5M</b> on Zmod or Forge-X, which has no filament slots to set); tags naming a Spoolman spool are assigned through Spoolman. A <b>Creality K1 / K2 / Hi</b> with a CFS gets the slot's material and color the way Creality Print sets it (stock firmware, nothing to enter but the IP address); slots holding a Creality RFID spool are left to the CFS. An <b>Anycubic Kobra</b> (Kobra 3 / S1 generation) with an ACE in LAN mode gets the slot's material and color over its own MQTT broker; turn LAN mode on at the printer, nothing else to enter. A <b>Qidi</b> Plus4 / Q2 / Max4 with a Box gets the slot's filament, color and vendor from the printer's own lists, as its RFID reader sets them (stock firmware, through Moonraker).</div>
     <div id="printerList"></div>
     <div class="actions">
       <button class="btn" id="addPrinter">Add printer</button>
@@ -171,11 +171,23 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const METHODS = {zmod_nfc: "Zmod + zmod_nfc", zmod_basic: "Zmod basic", stock: "Stock firmware", snapmaker: "Extended firmware"};
-const MODELS = {ad5x: "AD5X", creator5: "Creator 5", snapmaker_u1: "Snapmaker U1"};
+const METHODS = {zmod_nfc: "Zmod + zmod_nfc", zmod_basic: "Zmod basic", stock: "Stock firmware", snapmaker: "Extended firmware", snapmaker_stock: "Stock firmware", bambu: "LAN mode (MQTT)", creality_cfs: "Stock firmware (CFS)", anycubic_ace: "LAN mode (ACE)", qidi_box: "Stock firmware (Box)", happy_hare: "Happy Hare MMU", afc: "AFC (Box Turtle, ...)", lane_data: "Moonraker lane data"};
+const MODELS = {ad5x: "Flashforge AD5X", creator5: "Flashforge Creator 5", snapmaker_u1: "Snapmaker U1", bambu: "Bambu Lab", ad5m: "Flashforge AD5M (Zmod / Forge-X)", creality: "Creality K1 / K2 / Hi", anycubic: "Anycubic Kobra (ACE)", qidi: "Qidi Plus4 / Q2 / Max4", klipper: "Klipper"};
+// The printer list is shown in alphabetical order.
+const MODEL_ORDER = Object.entries(MODELS).sort((a, b) => a[1].localeCompare(b[1]));
 // The U1 runs only the Snapmaker method, which is only for the U1; it cannot
-// ask for the slot, so its readers are always fixed to a head.
+// ask for the slot, so its readers are always fixed to a head. Bambu
+// printers likewise have a method of their own.
 const U1 = "snapmaker_u1";
+const METHODS_FOR = {snapmaker_u1: ["snapmaker", "snapmaker_stock"], bambu: ["bambu"], klipper: ["happy_hare", "afc", "lane_data"], ad5m: ["lane_data"], creality: ["creality_cfs"], anycubic: ["anycubic_ace"], qidi: ["qidi_box"]};
+const FLASHFORGE_METHODS = ["zmod_nfc", "zmod_basic", "stock"];
+const methodsFor = model => METHODS_FOR[model] || FLASHFORGE_METHODS;
+const AMS_NAMES = {1: "AMS A", 2: "AMS B", 3: "AMS C", 4: "AMS D", 0: "External spool"};
+const ACE_NAMES = {1: "ACE 1", 2: "ACE 2", 3: "ACE 3", 4: "ACE 4"};
+const BOX_NAMES = {1: "Box 1", 2: "Box 2", 3: "Box 3", 4: "Box 4"};
+const CFS_NAMES = {1: "CFS 1", 2: "CFS 2", 3: "CFS 3", 4: "CFS 4", 0: "External spool"};
+// Printers whose readers serve one unit (AMS, CFS) or the external spool.
+const HAS_EXTERNAL = ["bambu", "creality"];
 let status = null, config = null, slotsFor = "", slots = null, busy = false;
 
 async function api(path, body) {
@@ -270,11 +282,12 @@ function renderSlots() {
   const p = status.printers[status.active], next = p ? p.slot : 0;
   const nextName = next && slots.slots.find(x => x.slot === next);
   hint.textContent = waiting ? "Click a slot to put this spool in it." :
+    nextName && slotCount(p) === 1 ? `Every scan goes into ${nextName.label}, the printer's only one.` :
     nextName ? `The next scan goes into ${nextName.label}. Click another ${p.model === U1 ? "head" : "slot, or Ask,"} to change that.` :
     "The printer asks where each scan goes. Click a slot to send every scan there instead.";
   const mark = on => on && !waiting ? "<br><em>next scan</em>" : "";
   const ask = p && p.method === "zmod_nfc" ? "on the printer's screen" : "on this page";
-  const tiles = waiting || (p && p.model === U1) ? [] : [`<button class="slot${next ? "" : " next"}" data-slot="0" ${busy ? "disabled" : ""}><i class="q">?</i><div><b>Ask</b><span>${ask}${mark(!next)}</span></div></button>`];
+  const tiles = waiting || (p && (p.model === U1 || slotCount(p) === 1)) ? [] : [`<button class="slot${next ? "" : " next"}" data-slot="0" ${busy ? "disabled" : ""}><i class="q">?</i><div><b>Ask</b><span>${ask}${mark(!next)}</span></div></button>`];
   for (const x of slots.slots) {
     const c = x.color ? `background:#${esc(x.color)}` : "";
     const what = [x.material && x.material !== "?" ? x.material : "", x.loaded ? "loaded" : "empty"].filter(Boolean).join(" · ");
@@ -355,35 +368,64 @@ $("rescan").onclick = () => api("/api/rescan", {});
 
 // --- Printers ---------------------------------------------------------------
 function slotName(p, n) {
+  if (p.model === "bambu") return +p.unit === 0 ? "external spool" : `tray ${"ABCD"[p.unit - 1]}${n}`;
+  if (p.model === "ad5m") return "tool T0";
+  if (p.model === "creality") return +p.unit === 0 ? "external spool" : `slot ${p.unit}${"ABCD"[n - 1]}`;
+  if (p.model === "anycubic") return (+p.unit || 1) === 1 ? `slot ${n}` : `ACE ${p.unit} slot ${n}`;
+  if (p.model === "qidi") return (+p.unit || 1) === 1 ? `slot ${n}` : `Box ${p.unit} slot ${n}`;
+  if (p.model === "klipper") {
+    const i = ((+p.unit || 1) - 1) * 4 + n - 1;
+    return p.method === "happy_hare" ? `gate ${i}` : p.method === "afc" ? `lane${i + 1}` : `tool T${i}`;
+  }
   return p.model === "creator5" ? `toolhead T${n - 1}` : p.model === U1 ? `head ${n}` : `slot ${n}`;
+}
+
+// A Bambu external spool is a single slot; a Klipper printer has what was
+// found on it (its tools, or the gates/lanes of the reader's group).
+function slotCount(p) {
+  if ((HAS_EXTERNAL.includes(p.model) && +p.unit === 0) || p.model === "ad5m") return 1;
+  if (p.model === "klipper" && p.slots_found > 0) return p.slots_found;
+  return 4;
 }
 
 // Only zmod_nfc can ask on the printer's screen. With the other methods
 // "ask" means picking the slot on this page after every scan.
 function slotOptions(p) {
   const ask = p.method === "zmod_nfc" ? "Ask on the printer's screen" : "Ask on this web page";
-  let html = p.model === U1 ? "" : `<option value="0" ${p.slot ? "" : "selected"}>${ask}</option>`;
-  for (let n = 1; n <= 4; n++) html += `<option value="${n}" ${p.slot === n ? "selected" : ""}>Always ${slotName(p, n)}</option>`;
+  let html = p.model === U1 || slotCount(p) === 1 ? "" : `<option value="0" ${p.slot ? "" : "selected"}>${ask}</option>`;
+  for (let n = 1; n <= slotCount(p); n++) html += `<option value="${n}" ${p.slot === n ? "selected" : ""}>Always ${slotName(p, n)}</option>`;
   return html;
 }
 
 function methodOptions(p) {
-  return Object.entries(METHODS).filter(([k]) => (k === "snapmaker") === (p.model === U1))
+  const allowed = methodsFor(p.model);
+  return Object.entries(METHODS).filter(([k]) => allowed.includes(k))
     .map(([k, v]) => `<option value="${k}" ${p.method === k ? "selected" : ""}>${v}</option>`).join("");
 }
 
+// Which four trays, gates, lanes or tools a reader covers.
+function unitOptions(p) {
+  const names = p.model === "bambu" ? AMS_NAMES : p.model === "creality" ? CFS_NAMES : p.model === "anycubic" ? ACE_NAMES : p.model === "qidi" ? BOX_NAMES : Object.fromEntries([1, 2, 3, 4].map(u => {
+    const a = (u - 1) * 4;
+    return [u, p.method === "happy_hare" ? `Gates ${a}-${a + 3}` : p.method === "afc" ? `Lanes ${a + 1}-${a + 4} (in AFC's order)` : `Tools T${a}-T${a + 3}`];
+  }));
+  return Object.entries(names).map(([k, v]) => `<option value="${k}" ${+p.unit === +k ? "selected" : ""}>${v}</option>`).join("");
+}
+
 function printerCard(p, i) {
-  const ph = p.method === "stock" ? 8898 : 7125;
+  const ph = {stock: 8898, bambu: 8883, creality_cfs: 9999, anycubic_ace: 18910}[p.method] || 7125;
+  if (p.unit === undefined) p.unit = 1;
   return `<div class="printer" data-i="${i}">
   <div class="grid">
     <div><label>Name</label><input data-k="name" value="${esc(p.name)}" placeholder="AD5X"></div>
     <div><label>IP address</label><input data-k="host" value="${esc(p.host)}" placeholder="192.168.1.50"></div>
-    <div><label>Printer</label><select data-k="model">${Object.entries(MODELS).map(([k, v]) => `<option value="${k}" ${p.model === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+    <div><label>Printer</label><select data-k="model">${MODEL_ORDER.map(([k, v]) => `<option value="${k}" ${p.model === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
     <div><label>Method</label><select data-k="method">${methodOptions(p)}</select></div>
     <div><label>Port</label><input data-k="port" type="number" value="${p.port || ""}" placeholder="${ph}"></div>
     <div><label>Slot for this reader</label><select data-k="slot">${slotOptions(p)}</select></div>
     <div class="m-stock"><label>Serial number</label><input data-k="serial" value="${esc(p.serial)}"></div>
-    <div class="m-stock"><label>Check code</label><input data-k="check_code" type="password" autocomplete="new-password" placeholder="${p.check_code_set ? "unchanged" : ""}"></div>
+    <div class="m-stock"><label class="code-label">Check code</label><input data-k="check_code" type="password" autocomplete="new-password" placeholder="${p.check_code_set ? "unchanged" : ""}"></div>
+    <div class="m-unit"><label class="unit-label">AMS for this reader</label><select data-k="unit">${unitOptions(p)}</select></div>
     <div class="m-zmod"><label>Moonraker API key (if needed)</label><input data-k="api_key" type="password" autocomplete="new-password" placeholder="${p.api_key_set ? "unchanged" : "none"}"></div>
   </div>
   <div class="banner slot-warn hidden">The printer's screen cannot ask where this spool goes with this method. With "Ask on this web page", nothing is sent to the printer until you pick the slot on this reader's web page to send to. So the esp32 web page has to be open in a browser when you scan. Pick a fixed slot to have every scan fill that slot by itself.</div>
@@ -395,8 +437,19 @@ function showMethodFields(card) {
   const model = card.querySelector('[data-k="model"]').value;
   const method = card.querySelector('[data-k="method"]');
   let m = method.value;
-  if (model === U1) m = "snapmaker";
-  else if (m === "snapmaker") m = "zmod_nfc";
+  if (!methodsFor(model).includes(m)) m = methodsFor(model)[0];
+  const unitSel = card.querySelector('[data-k="unit"]');
+  let unit = +unitSel.value;
+  if (!HAS_EXTERNAL.includes(model) && unit < 1) unit = 1;
+  // What was found on the printer holds while it is the same printer, method
+  // and group of four as saved.
+  const saved = config.printers[+card.dataset.i] || {};
+  const host = card.querySelector('[data-k="host"]').value.trim();
+  const slots_found = saved.keep !== undefined && saved.model === model && saved.method === m &&
+    +saved.unit === unit && saved.host === host ? saved.slots_found || 0 : 0;
+  unitSel.innerHTML = unitOptions({model, method: m, unit});
+  card.querySelector(".unit-label").textContent = model === "bambu" ? "AMS for this reader" : model === "creality" ? "CFS for this reader" : model === "anycubic" ? "ACE for this reader" : model === "qidi" ? "Box for this reader" :
+    m === "happy_hare" ? "Gates for this reader" : m === "afc" ? "Lanes for this reader" : "Tools for this reader";
   method.innerHTML = methodOptions({model, method: m});
   const slot = card.querySelector('[data-k="slot"]');
   let value = +slot.value;
@@ -404,18 +457,22 @@ function showMethodFields(card) {
   // so a scan fills it without the web page.
   if ((model === U1 || m !== "zmod_nfc" && card.dataset.method === "zmod_nfc") && !value) value = 1;
   card.dataset.method = m;
-  slot.innerHTML = slotOptions({method: m, model, slot: value});
+  if (value > slotCount({model, unit, slots_found})) value = 1;
+  slot.innerHTML = slotOptions({method: m, model, slot: value, unit, slots_found});
+  value = +slot.value;
   card.querySelector(".slot-warn").classList.toggle("hidden", m === "zmod_nfc" || value !== 0);
-  card.querySelectorAll(".m-stock").forEach(e => e.classList.toggle("hidden", m !== "stock"));
-  card.querySelectorAll(".m-zmod").forEach(e => e.classList.toggle("hidden", m === "stock"));
-  card.querySelector('[data-k="port"]').placeholder = m === "stock" ? 8898 : 7125;
+  card.querySelectorAll(".m-stock").forEach(e => e.classList.toggle("hidden", m !== "stock" && m !== "bambu"));
+  card.querySelectorAll(".m-unit").forEach(e => e.classList.toggle("hidden", !["bambu", "creality", "anycubic", "qidi", "klipper"].includes(model)));
+  card.querySelectorAll(".m-zmod").forEach(e => e.classList.toggle("hidden", ["stock", "bambu", "creality_cfs", "anycubic_ace"].includes(m)));
+  card.querySelector(".code-label").textContent = m === "bambu" ? "Access code" : "Check code";
+  card.querySelector('[data-k="port"]').placeholder = {stock: 8898, bambu: 8883, creality_cfs: 9999, anycubic_ace: 18910}[m] || 7125;
 }
 
 function renderPrinters() {
   $("printerList").innerHTML = config.printers.map(printerCard).join("") || '<div class="hint">No printers yet.</div>';
   document.querySelectorAll(".printer").forEach(card => {
     showMethodFields(card);
-    for (const k of ["method", "model", "slot"]) card.querySelector(`[data-k="${k}"]`).onchange = () => showMethodFields(card);
+    for (const k of ["method", "model", "slot", "unit"]) card.querySelector(`[data-k="${k}"]`).onchange = () => showMethodFields(card);
     card.querySelector(".remove").onclick = () => { collectPrinters(); config.printers.splice(+card.dataset.i, 1); renderPrinters(); };
     card.querySelector(".test").onclick = async () => {
       const msg = card.querySelector(".msg");
@@ -424,6 +481,7 @@ function renderPrinters() {
       const r = await api("/api/test", {printer: config.printers[+card.dataset.i].keep});
       msg.textContent = r.message || r.error; msg.className = "msg " + (r.ok ? "ok" : "bad");
       msg.style.color = r.ok ? "var(--ok)" : "var(--bad)";
+      if (r.slots_found !== undefined) { config.printers[+card.dataset.i].slots_found = r.slots_found; showMethodFields(card); }
     };
   });
 }
@@ -434,7 +492,7 @@ function collectPrinters() {
     card.querySelectorAll("[data-k]").forEach(e => {
       const k = e.dataset.k;
       if (k === "check_code" || k === "api_key") { if (e.value) p[k] = e.value; else delete p[k]; }
-      else if (k === "port" || k === "slot") p[k] = +e.value || 0;
+      else if (k === "port" || k === "slot" || k === "unit") p[k] = +e.value || 0;
       else p[k] = e.value.trim();
     });
   });
@@ -448,7 +506,7 @@ $("addPrinter").onclick = () => {
 $("savePrinters").onclick = async () => {
   collectPrinters();
   const r = await api("/api/config", {printers: config.printers.map(p => {
-    const o = {keep: p.keep ?? -1, name: p.name, host: p.host, model: p.model, method: p.method, port: p.port, slot: p.slot || 0, serial: p.serial};
+    const o = {keep: p.keep ?? -1, name: p.name, host: p.host, model: p.model, method: p.method, port: p.port, slot: p.slot || 0, unit: p.unit ?? 1, serial: p.serial};
     if (p.check_code) o.check_code = p.check_code;
     if (p.api_key) o.api_key = p.api_key;
     return o;

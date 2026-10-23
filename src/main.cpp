@@ -9,6 +9,22 @@
 //   stock       material and color go to the stock firmware's local API
 //   snapmaker   the Snapmaker U1 (Extended firmware) gets the read as its
 //               head's own RFID read; SpoolLink matches it in Spoolman
+//   snapmaker_stock
+//               a stock U1 gets the head's type, vendor and color
+//               (SET_PRINT_FILAMENT_CONFIG through Moonraker)
+//   bambu       a Bambu Lab printer in LAN mode gets the AMS tray's material,
+//               color and preset over its MQTT broker
+//   anycubic_ace
+//               an Anycubic Kobra in LAN mode gets the ACE slot's material and
+//               color over its MQTT broker
+//   qidi_box    a Qidi Plus4 / Q2 / Max4 gets the Box slot's filament, color
+//               and vendor ids (save_variables) through Moonraker
+//   creality_cfs
+//               a Creality K1 / K2 / Hi gets the CFS slot's material and color
+//               over Creality Print's WebSocket
+//   happy_hare, afc, lane_data
+//               Klipper printers through Moonraker: Happy Hare's gate map,
+//               AFC's lanes, or plain lane_data (Spoolman through each)
 // For zmod_basic and stock the slot is picked on the web page, or set once
 // as the automatic slot; the U1 always has a fixed head. The board's button
 // steps that slot (see buttonLoop).
@@ -42,7 +58,7 @@ constexpr uint32_t WIFI_LOST = 60 * 1000;
 uint32_t lastWifiTry = 0;
 uint32_t wifiLostAt = 0;
 
-// The button steps the active printer's slot: ask, 1 ... SLOT_COUNT, ask.
+// The button steps the active printer's slot: ask, 1 ... its slot count, ask.
 // A first press only shows the slot on the LED (one blink per slot number,
 // one long blink for ask); each press within STEP_WINDOW of the last moves
 // to the next slot. The choice is saved once the button has rested.
@@ -56,7 +72,7 @@ void buttonPressed(bool step) {
     }
     PrinterConfig &printer = app.config.printers[app.config.active];
     if (step) {
-        printer.slot = (printer.slot + 1) % (SLOT_COUNT + 1);
+        printer.slot = (printer.slot + 1) % (printer.slotCount() + 1);
         if (!printer.slot && !printer.canAsk()) printer.slot = 1;
         log_i("button: %s slot %d", printer.name.c_str(), printer.slot);
     }
@@ -213,8 +229,9 @@ void App::handleTag(const Tag &tag) {
         record(reply);
         return;
     }
-    // The U1's SpoolLink can find a tag without filament data in Spoolman.
-    if (!last.filament.hasFilamentData() && printer->method != Method::Snapmaker) {
+    // The U1's SpoolLink and the Klipper methods can look up a tag that only
+    // names a Spoolman spool.
+    if (!last.filament.hasFilamentData() && !takesSpoolOnlyTags(printer->method)) {
         last.status = last.filament.spoolId
                           ? "This tag only names Spoolman spool " + String(last.filament.spoolId) +
                                 "; only the zmod_nfc method can look it up"
@@ -284,6 +301,9 @@ void setup() {
     app.reader.begin(app.config.reader);
     app.display.begin(app.config.display, app.config.reader);
     startWifi();
+    // The clock, for printers whose LAN handshake is signed over the time
+    // (Anycubic); SNTP keeps trying in the background.
+    configTime(0, 0, "pool.ntp.org", "time.google.com");
     if (MDNS.begin(app.config.hostname.c_str())) MDNS.addService("http", "tcp", 80);
     webBegin();
 }

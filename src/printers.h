@@ -38,6 +38,10 @@ PrinterReply assignSlot(const PrinterConfig &printer, const Tag &tag, const Fila
 // zmod_nfc: close the plugin's slot prompt.
 void cancelPrompt(const PrinterConfig &printer);
 SlotList listSlots(const PrinterConfig &printer);
-PrinterReply testPrinter(const PrinterConfig &printer);
+// Klipper: remember how many slots the printer has for this reader (and
+// keep the fixed slot among them). Returns whether the settings changed.
+bool learnSlots(PrinterConfig &printer, const SlotList &list);
+// A Test button reply from a slot list.
+PrinterReply testReply(const SlotList &slots);
 
 void slotListToJson(const SlotList &list, JsonObject out);
