@@ -27,13 +27,12 @@ the printer. Everything is set up on the reader's own web page: Wi-Fi,
 printers and their IP addresses, and how each printer is reached.
 
 > **Status: early release.** Tested on an **ESP32-C3 SuperMini** with a
-> **PN532 over I2C**: OpenSpool (NTAG) and Snapmaker (MIFARE Classic, keys
+> **PN532 over I2C & HSU**: OpenSpool (NTAG) and Snapmaker (MIFARE Classic, keys
 > derived from the UID) tags, assigned on a **Creator 5** and an **AD5X**
 > running Zmod and zmod_nfc (from the printer's prompt and with the reader
 > fixed to one slot), and to an **AD5X's stock screen** through the stock
-> API (Flashforge's own screen program, run under Zmod's `DISPLAY_ON`; the
-> same program and API as an unmodified printer), and to an unmodified
-> **Creator 5 Pro on stock firmware** (SUNLU tag). The firmware
+> API, and to an unmodified
+> **Creator 5 Pro on stock firmware**. The firmware
 > builds for ESP32, ESP32-S3 and ESP32-C3 without warnings. Its decoders and
 > MIFARE key derivation match [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc)'s
 > (identical results for every tag in zmod_nfc's decoder tests, identical
