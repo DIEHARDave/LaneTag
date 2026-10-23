@@ -26,8 +26,6 @@ firmware or [Zmod](https://github.com/ghzserg/zmod), and needs no USB port on
 the printer. Everything is set up on the reader's own web page: Wi-Fi,
 printers and their IP addresses, and how each printer is reached.
 
-![A SUNLU tag scanned on LaneTag sets slot 1 on a stock Flashforge Creator 5 Pro](docs/c5-pro-stock-tag-scan.gif)
-
 ## What your printer needs
 
 > **Works on a new, out-of-the-box stock Flashforge AD5X or Creator 5 with
