@@ -52,6 +52,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .hint{font-size:13px;color:var(--muted);margin-top:6px}
 .msg{margin-top:10px;font-size:14px}
+.found{display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}.found>div{flex:1 1 auto;min-width:0}.found b{display:block}
 .hidden{display:none}
 </style>
 </head>
@@ -99,7 +100,9 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
     <h2>Printers</h2>
     <div class="hint">Pick a method per printer. <b>zmod_nfc</b> sends the whole tag to the zmod_nfc plugin, which shows its slot popup, matches Spoolman and fills lane data. <b>Zmod basic</b> sets slot color and material through Moonraker (no plugin needed). <b>Stock</b> uses Flashforge's local API: slot color and material only; it needs the printer's serial number and check code. A <b>Snapmaker U1</b> with paxx12's Extended firmware gets each scan as its head's own RFID read, and its SpoolLink matches the tag in Spoolman; each U1 reader is fixed to one head. On a U1 with Snapmaker's <b>stock firmware</b> a scan sets the head's material, vendor and color the way an edit on the screen does (no Spoolman matching). A <b>Bambu Lab</b> printer in LAN mode gets the tray's material, color and Generic preset over its MQTT broker; it needs the serial number and the LAN access code from the printer's network settings (newer firmware also needs Developer Mode). <b>Klipper</b> printers go through Moonraker: <b>Happy Hare</b> sets the MMU gate map, <b>AFC</b> (Box Turtle, Night Owl, ...) sets a lane, and <b>lane data</b> fills Moonraker's lane_data for OrcaSlicer on any Klipper printer (also the method for a <b>Flashforge AD5M</b> on Zmod or Forge-X, which has no filament slots to set); tags naming a Spoolman spool are assigned through Spoolman. A <b>Creality K1 / K2 / Hi</b> with a CFS gets the slot's material and color the way Creality Print sets it (stock firmware, nothing to enter but the IP address); slots holding a Creality RFID spool are left to the CFS. An <b>Anycubic Kobra</b> (Kobra 3 / S1 generation) with an ACE in LAN mode gets the slot's material and color over its own MQTT broker; turn LAN mode on at the printer, nothing else to enter. A <b>Qidi</b> Plus4 / Q2 / Max4 with a Box gets the slot's filament, color and vendor from the printer's own lists, as its RFID reader sets them (stock firmware, through Moonraker).</div>
     <div id="printerList"></div>
+    <div id="foundList"></div>
     <div class="actions">
+      <button class="btn" id="findPrinters">Find printers</button>
       <button class="btn" id="addPrinter">Add printer</button>
       <button class="btn primary" id="savePrinters">Save</button>
     </div>
@@ -502,6 +505,38 @@ $("addPrinter").onclick = () => {
   collectPrinters();
   config.printers.push({name: "", host: "", model: "ad5x", method: "zmod_nfc", port: 0, serial: ""});
   renderPrinters();
+};
+// Printers found on the network, each with a button that fills a new card.
+let found = [];
+function renderFound(d) {
+  found = d.printers || [];
+  const head = d.running ? `Searching ${esc(d.subnet || "the network")}… ${d.progress}%` :
+    d.error ? esc(d.error) : found.length ? `Found on ${esc(d.subnet)}:` : `No printers found on ${esc(d.subnet)}. Printers that are off, asleep or on another network do not show up; add those by hand.`;
+  $("foundList").innerHTML = `<div class="hint">${head}</div>` + found.map((f, i) => {
+    const have = config.printers.some(p => p.host === f.host);
+    const what = `${esc(MODELS[f.model])}${f.supported ? ", " + esc(METHODS[f.method]) : ""} · ${esc(f.host)}`;
+    const btn = !f.supported ? "" : have ? '<span class="muted">added</span>' : `<button class="btn add-found" data-f="${i}">Add</button>`;
+    return `<div class="found"><div><b>${esc(f.name)}</b><span class="muted">${what}</span>${f.note ? `<div class="hint">${esc(f.note)}</div>` : ""}</div>${btn}</div>`;
+  }).join("");
+  document.querySelectorAll(".add-found").forEach(b => b.onclick = () => {
+    const f = found[+b.dataset.f];
+    collectPrinters();
+    config.printers.push({name: f.name, host: f.host, model: f.model, method: f.method, port: 0, serial: f.serial || "", unit: f.unit ?? 1, slot: 0});
+    renderPrinters();
+    renderFound(d);
+    setStatus($("printersMsg"), `${f.name} added below the others: check it, then Save`, true);
+  });
+}
+$("findPrinters").onclick = async () => {
+  $("findPrinters").disabled = true;
+  let d = await api("/api/discover", {});
+  while (d.ok !== false && d.running) {
+    renderFound(d);
+    await new Promise(r => setTimeout(r, 1000));
+    d = await api("/api/discover");
+  }
+  renderFound(d);
+  $("findPrinters").disabled = false;
 };
 $("savePrinters").onclick = async () => {
   collectPrinters();

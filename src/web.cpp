@@ -6,6 +6,7 @@
 
 #include "app.h"
 #include "decoders.h"
+#include "discovery.h"
 #include "web_page.h"
 
 namespace {
@@ -299,6 +300,27 @@ void handleNetworks() {
     sendJson(200, doc);
 }
 
+void handleDiscover() {
+    if (!authorized()) return;
+    String error = discoveryStart();
+    if (error.length()) {
+        sendError(409, error);
+        return;
+    }
+    JsonDocument doc;
+    discoveryToJson(doc.to<JsonObject>());
+    doc["ok"] = true;
+    sendJson(200, doc);
+}
+
+void handleFound() {
+    if (!authorized()) return;
+    JsonDocument doc;
+    discoveryToJson(doc.to<JsonObject>());
+    doc["ok"] = true;
+    sendJson(200, doc);
+}
+
 void handleRestart() {
     if (!authorized()) return;
     JsonDocument reply;
@@ -359,6 +381,8 @@ void webBegin() {
     server.on("/api/test", HTTP_POST, handleTest);
     server.on("/api/rescan", HTTP_POST, handleRescan);
     server.on("/api/networks", HTTP_GET, handleNetworks);
+    server.on("/api/discover", HTTP_POST, handleDiscover);
+    server.on("/api/discover", HTTP_GET, handleFound);
     server.on("/api/restart", HTTP_POST, handleRestart);
     server.on("/update", HTTP_POST, handleUpdateDone, handleUpdateUpload);
     server.onNotFound(handleNotFound);

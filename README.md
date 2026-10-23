@@ -269,8 +269,21 @@ the file is `.pio/build/<board>/firmware.bin`).
    when the reader loses your network for a minute while running.
 3. Open the reader at **`http://lanetag-xxxx.local`** (the name is on the
    Settings tab) or its IP address from your router.
-4. Under **Printers**, add each printer: name, IP address, the printer
-   model, and the method. **Test** checks the connection.
+4. Under **Printers**, click **Find printers**, or add each printer by
+   hand: name, IP address, the printer model, and the method. **Test**
+   checks the connection.
+   * **Find printers** searches the reader's network (its /24) for about
+     45 seconds. Printers appear as they are found, each with an **Add**
+     button that fills in a new printer with the model and method it found.
+     Check the slot, enter any code it needs, and **Save**. It finds:
+     Moonraker printers, sorted by what Klipper loads (Zmod AD5X / Creator
+     5 / AD5M and whether zmod_nfc is installed, Snapmaker U1 Extended or
+     stock, Qidi Box, Happy Hare, AFC, else lane data); Flashforge stock
+     firmware by its own UDP discovery (fills in the serial number);
+     Bambu printers by their SSDP announcements (fills in the serial
+     number); Creality's WebSocket (port 9999) and Anycubic's LAN handshake
+     (port 18910). Printers that are off, asleep, or on another subnet do
+     not show up.
    * **Zmod + zmod_nfc**: install or update zmod_nfc on the printer. The
      reader reaches it through Moonraker (port 7125); zmod_nfc adds
      endpoints to Moonraker's API rather than opening a port of its own.
@@ -506,6 +519,8 @@ The page uses a small JSON API, also usable from scripts: `GET /api/status`
 {"printer": n, "slot": s}`, `POST /api/fixed_slot {"printer": n, "slot": s}`
 (0: ask), `POST /api/resend`, `POST /api/cancel`,
 `POST /api/test`, `POST /api/rescan`, `GET /api/networks`,
+`POST /api/discover` (start a printer search) and `GET /api/discover` (its
+progress and the printers found so far),
 `POST /api/restart` and `POST /update` (firmware). The protocol between the
 reader and zmod_nfc is in zmod_nfc's
 [docs/remote-api.md](https://github.com/DIEHARDave/zmod_nfc/blob/main/docs/remote-api.md).
