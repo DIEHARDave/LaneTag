@@ -1459,23 +1459,37 @@ String noTool(const PrinterConfig &printer, int tools, int index) {
            "; there is no T" + String(index);
 }
 
-SlotList laneDataSlots(const PrinterConfig &printer) {
-    SlotList list;
-    int tools = klipperTools(printer, list.error);
-    if (tools <= 0) return list;
-    if (printer.slotIndex(1) >= tools) {
-        list.error = noTool(printer, tools, printer.slotIndex(1));
-        return list;
-    }
+// The printer's lanes: one per extruder, or as many as lane_data already
+// describes when that is more (a filament changer such as the AD5X's IFS
+// feeds four lanes into one extruder). Returns 0 on failure.
+int laneCount(const PrinterConfig &printer, JsonDocument &doc, String &error) {
+    int tools = klipperTools(printer, error);
+    if (tools <= 0) return 0;
     HttpResult result = moonraker(printer, "/server/database/item?namespace=lane_data", "GET");
-    JsonDocument doc;
     deserializeJson(doc, result.body);
     // Moonraker answers 404 while nothing has written lane_data yet.
     if (!result.ok() && result.code != 404) {
-        list.error = moonrakerFailure(result, doc);
+        error = moonrakerFailure(result, doc);
+        return 0;
+    }
+    int lanes = tools;
+    for (JsonPairConst entry : doc["result"]["value"].as<JsonObjectConst>()) {
+        String lane = entry.value()["lane"] | "";
+        if (lane.length() && isDigit(lane[0])) lanes = max(lanes, (int)lane.toInt() + 1);
+    }
+    return lanes;
+}
+
+SlotList laneDataSlots(const PrinterConfig &printer) {
+    SlotList list;
+    JsonDocument doc;
+    int lanes = laneCount(printer, doc, list.error);
+    if (lanes <= 0) return list;
+    if (printer.slotIndex(1) >= lanes) {
+        list.error = noTool(printer, lanes, printer.slotIndex(1));
         return list;
     }
-    for (int slot = 1; slot <= SLOT_COUNT && printer.slotIndex(slot) < tools; slot++) {
+    for (int slot = 1; slot <= SLOT_COUNT && printer.slotIndex(slot) < lanes; slot++) {
         SlotInfo info;
         info.slot = slot;
         info.label = slotName(printer, slot);
@@ -1495,19 +1509,21 @@ SlotList laneDataSlots(const PrinterConfig &printer) {
 PrinterReply laneDataAssign(const PrinterConfig &printer, const Tag &tag, const Filament &f, int slot) {
     PrinterReply reply;
     int index = printer.slotIndex(slot);
-    int tools = klipperTools(printer, reply.message);
-    if (tools <= 0) return reply;
-    if (index >= tools) {
-        reply.message = noTool(printer, tools, index);
+    JsonDocument doc;
+    int lanes = laneCount(printer, doc, reply.message);
+    if (lanes <= 0) return reply;
+    if (index >= lanes) {
+        reply.message = noTool(printer, lanes, index);
         return reply;
     }
     int spoolId = tagSpoolId(f);
-    // T0 is a single-extruder printer's only tool: its spool is the one
-    // Spoolman tracks.
-    bool active = spoolId && index == 0 && hasComponent(printer, "spoolman");
+    // A printer with one lane prints only from it: its spool is the one
+    // Spoolman tracks. With more lanes, which one prints is not known here.
+    bool active = spoolId && lanes == 1 && hasComponent(printer, "spoolman");
     if (!f.hasFilamentData() && !active) {
         reply.message = spoolId ? "The tag only names Spoolman spool " + String(spoolId) +
-                                      ", which can only become the active spool of T0 (with Spoolman set up in Moonraker)"
+                                      ", which can only become the active spool of a single-tool printer "
+                                      "(with Spoolman set up in Moonraker)"
                                 : "No filament data on this tag";
         return reply;
     }
