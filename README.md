@@ -15,9 +15,9 @@ and
 (Box Turtle, Night Owl, ...) and plain Moonraker lane data, which is also
 what the **Flashforge AD5M** on Zmod or Forge-X gets. With no printer at
 all, it can be a stand-alone reader for **Spoolman** (find, bind and add
-spools; tested on an ESP32-C3 with Spoolman 0.27.0). The Anycubic,
-Bambu, Creality, Klipper and Qidi methods are not yet tested on real
-printers.
+spools; tested on an ESP32-C3 with Spoolman 0.27.0). Moonraker lane
+data is tested on real Klipper printers; the Anycubic, Bambu, Creality,
+Happy Hare, AFC and Qidi methods are not yet tested on real printers.
 
 > Formerly **zmod_esp32-nfc**. Boards running that firmware keep their
 > settings when updated to LaneTag (see [Updating from
