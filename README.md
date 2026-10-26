@@ -488,6 +488,12 @@ them: GPIO 0-5 on the C3 (not its BOOT button, GPIO 9; GPIO 1 works), GPIO
 pull-up to 3.3 V). A PN5180 has no power-down here and stays on, as do
 the power LEDs of the reader and board.
 
+After a wake from sleep, a C3 (seen on a SuperMini; possibly the C6 and S3
+too) cannot be flashed over USB: esptool stops with "Unable to verify flash
+chip connection" and leaves the board in flash mode. Unplug it for a few
+seconds (or hold BOOT while plugging it in) and flash again. Updates from
+**Settings > Firmware** go over Wi-Fi instead of USB.
+
 ### Spoolman tag scanning
 
 Spoolman 0.27 and newer can follow a tag reader: in Spoolman's settings,

@@ -337,6 +337,8 @@ void setup() {
     configTime(0, 0, "pool.ntp.org", "time.google.com");
     if (MDNS.begin(app.config.hostname.c_str())) MDNS.addService("http", "tcp", 80);
     webBegin();
+    // The sleep timer starts once on the network (joining can take 30 s).
+    app.usedAt = millis();
 }
 
 void loop() {

@@ -26,8 +26,12 @@ void sleepBegin() {
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
     if (cause != ESP_SLEEP_WAKEUP_UNDEFINED) log_i("woken from deep sleep (cause %d)", (int)cause);
 #if SOC_GPIO_SUPPORT_DEEPSLEEP_WAKEUP
-    // Held through the sleep to keep its pull-up.
+    // Release any pin hold left by an earlier build, which held every pin
+    // through the sleep (the flash's too).
     if (app.config.buttonPin >= 0) gpio_hold_dis((gpio_num_t)app.config.buttonPin);
+#if ESP_IDF_VERSION_MAJOR < 5
+    gpio_deep_sleep_hold_dis();
+#endif
 #endif
 }
 
@@ -53,12 +57,10 @@ void sleepLoop() {
     rtc_gpio_pullup_en(gpio);
     rtc_gpio_pulldown_dis(gpio);
 #else
+    // The pad keeps its pull-up through the sleep (as in Espressif's
+    // deep_sleep example).
     gpio_pullup_en(gpio);
     gpio_pulldown_dis(gpio);
-    gpio_hold_en(gpio);
-#if ESP_IDF_VERSION_MAJOR < 5
-    gpio_deep_sleep_hold_en();
-#endif
     esp_deep_sleep_enable_gpio_wakeup(1ULL << pin, ESP_GPIO_WAKEUP_GPIO_LOW);
 #endif
     esp_deep_sleep_start();
