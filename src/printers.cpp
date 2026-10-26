@@ -1580,7 +1580,7 @@ PrinterReply assignSlot(const PrinterConfig &printer, const Tag &tag, const Fila
     case Method::CrealityCfs: return crealityAssign(printer, filament, slot);
     case Method::AnycubicAce: return anycubicAssign(printer, filament, slot);
     case Method::QidiBox: return qidiAssign(printer, filament, slot);
-    case Method::Spoolman: return spoolmanScan(printer, tag, filament);
+    case Method::Spoolman: return spoolmanScan(printer, tag, filament, readerName);
     default: return stockAssign(printer, filament, slot);
     }
 }

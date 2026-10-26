@@ -148,6 +148,15 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
     <div class="msg" id="settingsMsg"></div>
   </div>
   <div class="card">
+    <h2>Spoolman tag scanning</h2>
+    <div class="grid">
+      <div><label for="smReport">Report every scan to Spoolman at</label><input id="smReport" placeholder="none, e.g. 192.168.1.20:7912"></div>
+    </div>
+    <div class="hint">Spoolman 0.27 or newer: this reader then shows up in Spoolman's settings under Tag scanning, and a browser paired with it (or set to auto-navigate) opens the scanned spool, whichever printer the scan goes to. Spoolman finds the spool by tags linked in Spoolman; a Spoolman entry on the Printers tab links them as it finds or adds spools.</div>
+    <div class="actions"><button class="btn primary" id="saveReport">Save</button></div>
+    <div class="msg" id="reportMsg"></div>
+  </div>
+  <div class="card">
     <h2>Display</h2>
     <div class="grid">
       <div><label for="dispType">Screen</label><select id="dispType"><option value="none">None</option><option value="ssd1306">OLED SSD1306 (0.96", I2C)</option><option value="sh1106">OLED SH1106 (1.3", I2C)</option><option value="cyd">CYD 2.8" touch (ESP32-2432S028)</option><option value="cyd-st7789">CYD 2.8" touch, ST7789 (two USB ports)</option></select></div>
@@ -594,6 +603,7 @@ function renderSettings() {
   $("dispAddr").value = String(d.address || 60);
   $("dispFlip").value = d.flip ? 1 : 0;
   $("dispSleep").value = d.sleep ?? 10;
+  $("smReport").value = config.spoolman_report || "";
   showDisplay();
   showBus();
 }
@@ -609,6 +619,10 @@ function showDisplay() {
   setStatus($("dispMsg"), d && d.error ? d.error : "", d ? !d.error : undefined);
 }
 $("dispType").onchange = showDisplay;
+$("saveReport").onclick = async () => {
+  const r = await api("/api/config", {spoolman_report: $("smReport").value.trim()});
+  setStatus($("reportMsg"), r.ok ? "Saved" : r.error, r.ok);
+};
 $("saveDisplay").onclick = async () => {
   const r = await api("/api/config", {display: displaySettings()});
   setStatus($("dispMsg"), r.ok ? (r.restart ? "Saved; restarting" : "Saved") : r.error, r.ok);

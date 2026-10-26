@@ -34,6 +34,7 @@
 
 #include "app.h"
 #include "decoders.h"
+#include "spoolman.h"
 
 App app;
 
@@ -181,7 +182,12 @@ void applyWifiPower() {
 #endif
 }
 
-String App::readerName() const { return "LaneTag " + config.hostname; }
+// "LaneTag lanetag-53dc" would say it twice.
+String App::readerName() const {
+    String lower = config.hostname;
+    lower.toLowerCase();
+    return lower.indexOf("lanetag") >= 0 ? config.hostname : "LaneTag " + config.hostname;
+}
 
 void App::record(const PrinterReply &reply) {
     last.ok = reply.ok;
@@ -208,6 +214,11 @@ void App::handleTag(const Tag &tag) {
         return;
     }
     const PrinterConfig *printer = config.activePrinter();
+    // Spoolman's web page follows this reader's scans; a Spoolman target
+    // reports to its own server itself.
+    String report = spoolmanBase(config.spoolmanReport);
+    if (report.length() && !(printer && printer->model == Model::Spoolman && printer->baseUrl() == report))
+        reportScan(report, "", tag, last.filament, readerName());
     if (!printer) {
         last.status = "No printer set up yet; add one on the Printers tab";
         return;

@@ -205,6 +205,7 @@ void configToJson(const Config &config, JsonObject out, bool secrets) {
     display["address"] = config.display.address;
     display["flip"] = config.display.flip;
     display["sleep"] = config.display.sleepMinutes;
+    out["spoolman_report"] = config.spoolmanReport;
     JsonArray printers = out["printers"].to<JsonArray>();
     for (auto &p : config.printers) {
         JsonObject o = printers.add<JsonObject>();
@@ -295,6 +296,11 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
         if (next.display.type != DisplayType::None && !isTft(next.display.type) &&
             (next.display.sda < 0 || next.display.scl < 0))
             return "the display needs its SDA and SCL pins";
+    }
+    if (in["spoolman_report"].is<const char *>()) {
+        next.spoolmanReport = in["spoolman_report"].as<const char *>();
+        next.spoolmanReport.trim();
+        if (next.spoolmanReport.indexOf(' ') >= 0) return "the Spoolman address has a space in it";
     }
     JsonArrayConst printers = in["printers"];
     if (!printers.isNull()) {

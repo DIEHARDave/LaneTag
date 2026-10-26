@@ -2,10 +2,15 @@
 
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <mbedtls/base64.h>
 
 namespace {
 
 constexpr uint32_t TIMEOUT = 10000;
+// A scan report waits for no longer: the printer gets the scan after it.
+constexpr uint32_t REPORT_TIMEOUT = 2500;
+// Spoolman's limit for a scan's base64 payload (8192 characters).
+constexpr size_t MAX_PAYLOAD = 6144;
 // Larger "spool IDs" on tags are not Spoolman's (phone apps write
 // timestamps there).
 constexpr int MAX_SPOOLMAN_ID = 10000000;
@@ -14,24 +19,24 @@ const char *const NFC_ID = "nfc_id";
 
 // One Spoolman API call; the reply goes into doc, through filter when
 // given (the spool list can be far larger than the reply we need).
-bool call(const PrinterConfig &server, const char *method, const String &path, const String &body,
-          JsonDocument &doc, String &error, const JsonDocument *filter = nullptr) {
+bool call(const String &base, const String &apiKey, const char *method, const String &path, const String &body,
+          JsonDocument &doc, String &error, const JsonDocument *filter = nullptr, uint32_t timeout = TIMEOUT) {
     if (WiFi.status() != WL_CONNECTED) {
         error = "Wi-Fi is not connected";
         return false;
     }
     WiFiClient client;
     HTTPClient http;
-    http.setConnectTimeout(3000);
-    http.setTimeout(TIMEOUT);
+    http.setConnectTimeout(min(timeout, (uint32_t)3000));
+    http.setTimeout(timeout);
     // HTTP/1.0: the reply is never chunked, so it can be parsed off the stream.
     http.useHTTP10(true);
-    if (!http.begin(client, server.baseUrl() + "/api/v1" + path)) {
-        error = "bad address " + server.host;
+    if (!http.begin(client, base + "/api/v1" + path)) {
+        error = "bad address " + base;
         return false;
     }
     if (body.length()) http.addHeader("Content-Type", "application/json");
-    if (server.apiKey.length()) http.addHeader("X-Api-Key", server.apiKey);
+    if (apiKey.length()) http.addHeader("X-Api-Key", apiKey);
     int code = http.sendRequest(method, (uint8_t *)body.c_str(), body.length());
     if (code <= 0) {
         error = "Spoolman not reachable: " + HTTPClient::errorToString(code);
@@ -47,11 +52,17 @@ bool call(const PrinterConfig &server, const char *method, const String &path, c
         error = message ? "Spoolman: " + String(message) : "Spoolman answered HTTP " + String(code);
         return false;
     }
-    if (parsed) {
+    // Empty replies (204) are fine.
+    if (parsed && parsed != DeserializationError::EmptyInput) {
         error = "Spoolman's reply was not readable (" + String(parsed.c_str()) + ")";
         return false;
     }
     return true;
+}
+
+bool call(const PrinterConfig &server, const char *method, const String &path, const String &body,
+          JsonDocument &doc, String &error, const JsonDocument *filter = nullptr) {
+    return call(server.baseUrl(), server.apiKey, method, path, body, doc, error, filter);
 }
 
 String json(const JsonDocument &doc) {
@@ -169,6 +180,38 @@ float density(const String &material) {
     return 1.24;
 }
 
+// Spoolman's name for a tag's kind: the decoded format ("bambu",
+// "openprinttag", ...), else the chip ("ntag" for type 2).
+String tagFormat(const Tag &tag, const Filament &f) {
+    if (f.valid() && f.format != "Text") {
+        String format = f.format;
+        format.toLowerCase();
+        return format;
+    }
+    switch (tag.kind) {
+    case TagKind::Type2: return "ntag";
+    case TagKind::MifareClassic: return "mifare_classic";
+    case TagKind::Type4: return "type4";
+    case TagKind::Type5: return "iso15693";
+    default: return "";
+    }
+}
+
+// Spoolman's reader ids allow letters, digits and ._:- only.
+String readerId(const String &readerName) {
+    String id;
+    for (char c : readerName) id += isalnum((unsigned char)c) || c == '.' || c == '_' || c == ':' || c == '-' ? c : '-';
+    return id.substring(0, 64);
+}
+
+// Link the tag to a spool in Spoolman's own tag list.
+bool linkTag(const PrinterConfig &server, int spoolId, const String &uid, const String &format, String &error) {
+    JsonDocument body, reply;
+    body["uid"] = uid;
+    if (format.length()) body["format"] = format;
+    return call(server, "POST", "/spool/" + String(spoolId) + "/tag", json(body), reply, error);
+}
+
 // Spoolman refuses extra fields it does not know: add "Card UIDs" once.
 bool ensureCardField(const PrinterConfig &server, String &error) {
     JsonDocument fields;
@@ -280,15 +323,26 @@ bool createSpool(const PrinterConfig &server, const Filament &f, const String &u
 
 }  // namespace
 
-PrinterReply spoolmanScan(const PrinterConfig &server, const Tag &tag, const Filament &f) {
+PrinterReply spoolmanScan(const PrinterConfig &server, const Tag &tag, const Filament &f, const String &readerName) {
     PrinterReply reply;
     String uid = normalizeUid(tag.uidHex());
     JsonDocument spool;     // the spool the tag belongs to, as Spoolman has it
     String how;
+    // Spoolman's own tag links first (and its web page hears of the scan).
+    TagMatch linked = reportScan(server.baseUrl(), server.apiKey, tag, f, readerName);
     int tagSpool = f.spoolId > 0 && f.spoolId < MAX_SPOOLMAN_ID ? f.spoolId : 0;
     if (tagSpool) {
         if (!call(server, "GET", "/spool/" + String(tagSpool), "", spool, reply.message)) return reply;
         how = "named on the tag";
+    } else if (linked.spoolId) {
+        if (!call(server, "GET", "/spool/" + String(linked.spoolId), "", spool, reply.message)) return reply;
+        how = "found by its tag";
+    } else if (linked.filamentId) {
+        // A filament's tag (a sample card, say) names no one spool.
+        reply.ok = true;
+        reply.title = f.title();
+        reply.message = "Tag linked to Spoolman filament " + String(linked.filamentId) + ", not to a spool";
+        return reply;
     } else {
         JsonDocument filter, spools;
         JsonObject only = filter.add<JsonObject>();
@@ -352,6 +406,16 @@ PrinterReply spoolmanScan(const PrinterConfig &server, const Tag &tag, const Fil
         }
     }
     int id = spool["id"] | 0;
+    // Into Spoolman's own tag list as well, unless it has the tag already
+    // (then it said so above), and the scan once more so the page shows
+    // this spool.
+    if (linked.ok && !linked.spoolId && !linked.filamentId && uid.length()) {
+        String error;
+        if (linkTag(server, id, uid, tagFormat(tag, f), error))
+            reportScan(server.baseUrl(), server.apiKey, tag, f, readerName);
+        else
+            log_w("tag %s not linked to spool %d: %s", uid.c_str(), id, error.c_str());
+    }
     reply.ok = true;
     reply.spoolId = id;
     reply.title = spoolTitle(spool);
@@ -368,6 +432,44 @@ PrinterReply spoolmanScan(const PrinterConfig &server, const Tag &tag, const Fil
             reply.message += "; location not set: " + error;
     }
     return reply;
+}
+
+String spoolmanBase(String address) {
+    address.trim();
+    if (!address.length()) return "";
+    if (address.startsWith("http://")) address = address.substring(7);
+    int slash = address.indexOf('/');
+    if (slash >= 0) address = address.substring(0, slash);
+    if (address.indexOf(':') < 0) address += ":" + String(SPOOLMAN_PORT);
+    return "http://" + address;
+}
+
+TagMatch reportScan(const String &base, const String &apiKey, const Tag &tag, const Filament &f,
+                    const String &readerName) {
+    TagMatch match;
+    String uid = normalizeUid(tag.uidHex());
+    if (!base.length() || !uid.length()) return match;
+    JsonDocument body, reply;
+    body["uid"] = uid;
+    body["reader_id"] = readerId(readerName);
+    body["name"] = readerName.substring(0, 64);
+    String format = tagFormat(tag, f);
+    if (format.length()) body["format"] = format;
+    const std::vector<uint8_t> &raw = tag.kind == TagKind::Type4 ? tag.ndef : tag.memory;
+    if (!raw.empty() && raw.size() <= MAX_PAYLOAD) {
+        size_t len = 0;
+        std::vector<uint8_t> b64(4 * ((raw.size() + 2) / 3) + 1);
+        if (!mbedtls_base64_encode(b64.data(), b64.size(), &len, raw.data(), raw.size()))
+            body["payload_b64"] = String((const char *)b64.data(), len);
+    }
+    if (!call(base, apiKey, "POST", "/tag/scan", json(body), reply, match.error, nullptr, REPORT_TIMEOUT)) {
+        log_w("scan not reported to Spoolman: %s", match.error.c_str());
+        return match;
+    }
+    match.ok = true;
+    match.spoolId = reply["matched_spool_id"] | 0;
+    match.filamentId = reply["matched_filament_id"] | 0;
+    return match;
 }
 
 SlotList spoolmanStatus(const PrinterConfig &server) {

@@ -134,6 +134,9 @@ struct Config {
     // Push button (to ground) that steps the active printer's slot; -1: none.
     int buttonPin = -1;
     DisplayConfig display;
+    // Spoolman to report every scan to ("host" or "host:port"; "": none),
+    // for its web page's tag scanning.
+    String spoolmanReport;
 
     const PrinterConfig *activePrinter() const {
         return active >= 0 && active < (int)printers.size() ? &printers[active] : nullptr;

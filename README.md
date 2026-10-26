@@ -442,6 +442,25 @@ the last press. Another button (wired from a GPIO to GND) can be set under
 **Settings > Slot button pin**, or -1 to turn this off. Don't hold BOOT while
 the board resets or powers up: that starts the ESP32's flash mode.
 
+### Spoolman tag scanning
+
+Spoolman 0.27 and newer can follow a tag reader: in Spoolman's settings,
+under **Tag scanning**, a browser can pair with a reader (or auto-navigate)
+and then opens whatever spool or filament the reader scans. To make the
+LaneTag one of those readers, enter your Spoolman's address (`host` or
+`host:port`, port 7912 by default) under **Settings > Spoolman tag
+scanning > Report every scan to Spoolman at**. Every scan is then
+reported to Spoolman before it goes to the active printer, whichever
+printer that is; the reader appears under **Recent readers** after its
+first scan (Spoolman forgets the list when it restarts, until the next
+scan).
+
+Spoolman resolves a scan through the tags linked in Spoolman itself. A
+**Spoolman (no printer)** entry links them as it finds or adds spools
+(keeping the Card UIDs field for the printers too), so scanning your
+spools once at a Spoolman entry is enough for the browser to know them
+afterwards.
+
 ### The display
 
 ![The reader on an Ideaspark ESP32 with its built-in two-color 0.96" OLED, after a Snapmaker PLA SnapSpeed spool went into slot 1 of an AD5X as Spoolman spool 14](docs/oled-display.jpg)
