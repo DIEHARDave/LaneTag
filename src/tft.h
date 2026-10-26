@@ -18,6 +18,7 @@ public:
     void refresh() { draw(true); }
     void showSlot() { wake(); draw(true); }
     void wake();
+    void off();
 
 private:
     enum class Screen : uint8_t { Setup, NoReader, Idle, Scan };

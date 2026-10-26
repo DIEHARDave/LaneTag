@@ -35,6 +35,7 @@
 
 #include "app.h"
 #include "decoders.h"
+#include "sleep.h"
 #include "spoolman.h"
 
 App app;
@@ -71,6 +72,7 @@ constexpr uint32_t DEBOUNCE = 30;
 constexpr uint32_t STEP_WINDOW = 5000;
 
 void buttonPressed(bool step) {
+    app.usedAt = millis();
     if (app.config.active < 0 || app.config.active >= (int)app.config.printers.size()) {
         app.feedback.play(Signal::Failure);
         return;
@@ -206,6 +208,7 @@ void App::handleTag(const Tag &tag) {
     static uint32_t counter = 0;
     last.id = ++counter;
     last.at = millis();
+    usedAt = last.at;
     last.tag = tag;
     last.filament = decodeTag(tag);
     log_i("read %s -> %s", tag.describe().c_str(),
@@ -323,7 +326,8 @@ void setup() {
     // 1 power-on, 3 software restart, 4 crash, 5-7 watchdog, 9 brownout.
     log_i("LaneTag %s, reset reason %d", FIRMWARE_VERSION, (int)esp_reset_reason());
     loadConfig(app.config);
-    app.feedback.begin(app.config.ledPin, app.config.ledActiveLow, app.config.buzzerPin);
+    app.feedback.begin(app.config.led, app.config.buzzerPin);
+    sleepBegin();
     if (app.config.buttonPin >= 0) pinMode(app.config.buttonPin, INPUT_PULLUP);
     app.reader.begin(app.config.reader);
     app.display.begin(app.config.display, app.config.reader);
@@ -341,6 +345,7 @@ void loop() {
     app.feedback.loop();
     app.display.loop();
     buttonLoop();
+    sleepLoop();
     if (app.apMode && app.config.wifiSsid.length()) {
         if (WiFi.status() == WL_CONNECTED) {
             // Back on the home network: close the setup access point.

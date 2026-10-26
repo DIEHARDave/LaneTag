@@ -3,6 +3,8 @@
 #include <Preferences.h>
 #include <nvs_flash.h>
 
+#include "sleep.h"
+
 namespace {
 
 const char *const NVS_NAMESPACE = "lanetag";
@@ -39,11 +41,11 @@ constexpr int DEFAULT_BUTTON = 9;
 #elif defined(BOARD_CYD)
 // ESP32-2432S028: a PN532 goes on CN1 (GPIO 22, 27, 3.3 V, GND). The screen
 // and touch take most other pins; the SPI defaults are the SD card slot's.
-// The RGB LED is lit when low: 4 red, 16 green, 17 blue.
+// The RGB LED is lit when low: 4 red, 16 green, 17 blue (set below).
 constexpr int DEFAULT_SDA = 27, DEFAULT_SCL = 22, DEFAULT_RX = 27, DEFAULT_TX = 22;
 constexpr int DEFAULT_SCK = 18, DEFAULT_MISO = 19, DEFAULT_MOSI = 23, DEFAULT_SS = 5, DEFAULT_RST = -1;
 constexpr int DEFAULT_BUSY = 35;
-constexpr int DEFAULT_LED = 17;
+constexpr int DEFAULT_LED = 4;
 constexpr bool DEFAULT_LED_LOW = true;
 constexpr int DEFAULT_BUTTON = 0;
 #else
@@ -73,8 +75,8 @@ void setDefaults(Config &config) {
     config.reader.ss = DEFAULT_SS;
     config.reader.rst = DEFAULT_RST;
     config.reader.busy = DEFAULT_BUSY;
-    config.ledPin = DEFAULT_LED;
-    config.ledActiveLow = DEFAULT_LED_LOW;
+    config.led.pin = DEFAULT_LED;
+    config.led.activeLow = DEFAULT_LED_LOW;
     config.buttonPin = DEFAULT_BUTTON;
     // An OLED most likely shares the reader's I2C pins.
     config.display.sda = DEFAULT_SDA;
@@ -82,6 +84,9 @@ void setDefaults(Config &config) {
 #ifdef BOARD_CYD
     config.reader.bus = Pn532Bus::UART;
     config.display.type = DisplayType::CydIli9341;
+    config.led.type = LedType::Rgb;
+    config.led.green = 16;
+    config.led.blue = 17;
 #endif
     // The last two bytes of the MAC address, as on the setup access point.
     uint64_t mac = ESP.getEfuseMac();
@@ -194,10 +199,14 @@ void configToJson(const Config &config, JsonObject out, bool secrets) {
     reader["ss"] = config.reader.ss;
     reader["rst"] = config.reader.rst;
     reader["busy"] = config.reader.busy;
-    out["led_pin"] = config.ledPin;
-    out["led_active_low"] = config.ledActiveLow;
+    out["led_type"] = ledTypeName(config.led.type);
+    out["led_pin"] = config.led.pin;
+    out["led_green_pin"] = config.led.green;
+    out["led_blue_pin"] = config.led.blue;
+    out["led_active_low"] = config.led.activeLow;
     out["buzzer_pin"] = config.buzzerPin;
     out["button_pin"] = config.buttonPin;
+    out["sleep_minutes"] = config.sleepMinutes;
     JsonObject display = out["display"].to<JsonObject>();
     display["type"] = displayTypeName(config.display.type);
     display["sda"] = config.display.sda;
@@ -272,10 +281,24 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
                                                          : "the PN5180 needs its SCK, MISO, MOSI and NSS pins";
         if (next.reader.chip == ReaderChip::PN5180 && next.reader.busy < 0) return "the PN5180 needs its BUSY pin";
     }
-    next.ledPin = pin(in["led_pin"], next.ledPin);
-    if (!in["led_active_low"].isNull()) next.ledActiveLow = in["led_active_low"].as<bool>();
+    if (in["led_type"].is<const char *>()) {
+        String type = in["led_type"].as<const char *>();
+        next.led.type = type == "rgb" ? LedType::Rgb : type == "ws2812" ? LedType::Ws2812 : LedType::Single;
+    } else if (!in["led_pin"].isNull()) {
+        // Saved before there were LED types: the one LED pin.
+        next.led.type = LedType::Single;
+    }
+    next.led.pin = pin(in["led_pin"], next.led.pin);
+    next.led.green = pin(in["led_green_pin"], next.led.green);
+    next.led.blue = pin(in["led_blue_pin"], next.led.blue);
+    if (!in["led_active_low"].isNull()) next.led.activeLow = in["led_active_low"].as<bool>();
     next.buzzerPin = pin(in["buzzer_pin"], next.buzzerPin);
     next.buttonPin = pin(in["button_pin"], next.buttonPin);
+    next.sleepMinutes = constrain(in["sleep_minutes"] | next.sleepMinutes, 0, 1440);
+    if (next.sleepMinutes && !canWakeFrom(next.buttonPin))
+        return next.buttonPin < 0 ? String("sleep needs the slot button to wake the board")
+                                  : "the slot button on GPIO " + String(next.buttonPin) +
+                                        " cannot wake this board from sleep; use " + wakePins();
     JsonObjectConst display = in["display"];
     if (!display.isNull()) {
         String type = display["type"] | "none";
@@ -402,7 +425,9 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
               next.reader.sck != config.reader.sck || next.reader.miso != config.reader.miso ||
               next.reader.mosi != config.reader.mosi || next.reader.ss != config.reader.ss ||
               next.reader.rst != config.reader.rst || next.reader.busy != config.reader.busy ||
-              next.ledPin != config.ledPin || next.buzzerPin != config.buzzerPin ||
+              next.led.type != config.led.type || next.led.pin != config.led.pin ||
+              next.led.green != config.led.green || next.led.blue != config.led.blue ||
+              next.led.activeLow != config.led.activeLow || next.buzzerPin != config.buzzerPin ||
               next.buttonPin != config.buttonPin || next.display.type != config.display.type ||
               next.display.sda != config.display.sda || next.display.scl != config.display.scl ||
               next.display.address != config.display.address || next.display.flip != config.display.flip ||

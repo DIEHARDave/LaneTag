@@ -84,6 +84,13 @@ void Rc522::end() {
     if (spi_) spi_->end();
 }
 
+void Rc522::powerDown() {
+    if (!ok_) return;
+    // Soft power-down; init's soft reset wakes it.
+    writeReg(CommandReg, 0x10 | CMD_IDLE);
+    ok_ = false;
+}
+
 uint8_t Rc522::readReg(uint8_t reg) {
     spi_->beginTransaction(SPISettings(SPI_CLOCK, MSBFIRST, SPI_MODE0));
     digitalWrite(ss_, LOW);

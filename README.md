@@ -99,7 +99,9 @@ Each printer on the reader's list uses one of these methods:
   of 8.5 dBm lost most packets on the tested board, which worked well from
   11 dBm up (15 dBm is the C3 default).
 * Optional: an LED and an **active** buzzer. The board's own LED is used by
-  default (GPIO 2 on ESP32 DevKits, GPIO 8 on the C3 SuperMini), and its
+  default (GPIO 2 on ESP32 DevKits, GPIO 8 on the C3 SuperMini, the RGB LED
+  on the CYD); an RGB LED or a WS2812 shows what happened in color (see
+  [LED colors](#led-colors)). The board's
   BOOT button picks the slot (GPIO 0, GPIO 9 on the C3; see
   [Choosing the slot with the button](#choosing-the-slot-with-the-button)).
 * Optional: a 128x64 I2C OLED (SSD1306 0.96" or SH1106 1.3"), see
@@ -432,6 +434,26 @@ A reader can have a fixed slot on one printer and ask on another.
 The LED (and buzzer) signal: a short blink when a tag is read, a long one
 when the printer took it, three short ones on an error.
 
+#### LED colors
+
+Under **Settings > LED**, the LED can be a single LED, an **RGB LED** on
+three pins (common cathode: lights when high; common anode: lights when low;
+a 220-330 ohm resistor on each color) or one **WS2812 / NeoPixel** on one
+data pin (such as the built-in one on many ESP32-S3 and C6 DevKitC boards:
+GPIO 48 or 38 on the S3, GPIO 8 on the C6). In color:
+
+| Event | Color |
+|-------|-------|
+| Tag read | short blue flash |
+| The printer took it | long green |
+| Error | three short red |
+| A slot has to be picked | two short yellow |
+| Slot button (slot number) | blue blinks |
+| Setup access point up (no Wi-Fi) | slow purple blink |
+
+The CYD uses its RGB LED (red 4, green 16, blue 17) in color by default;
+one set up before this setting keeps its blue LED until changed to RGB.
+
 ### Choosing the slot with the button
 
 The board's **BOOT button** changes the slot of the active printer (the one
@@ -447,6 +469,24 @@ The next scan goes into the shown slot. The choice is the same setting as
 the last press. Another button (wired from a GPIO to GND) can be set under
 **Settings > Slot button pin**, or -1 to turn this off. Don't hold BOOT while
 the board resets or powers up: that starts the ESP32's flash mode.
+
+### Sleep (running on a battery)
+
+Awake, the reader draws about 150-250 mA (Wi-Fi and the reader's RF field
+are always on), so a 2000 mAh cell lasts some 8 hours. **Settings > Sleep
+after minutes unused** puts the board into deep sleep after that long
+without a scan, button press, touch or use of the web page (the page merely
+being open does not count). The PN532 or RC522, the screen, the LED and
+Wi-Fi switch off; a press of the slot button wakes the board, which starts
+as after a reset and is back on the network in a few seconds. It does not
+sleep while the setup access point is up or a scan waits for its slot.
+
+Only some pins can wake the board, so sleep needs the slot button on one of
+them: GPIO 0-5 on the C3 (not its BOOT button, GPIO 9; GPIO 1 works), GPIO
+0-7 on the C6 (not BOOT either), GPIO 0-21 on the S3, and GPIO 0, 2, 4,
+12-15, 25-27 or 32-39 on the ESP32 (BOOT, GPIO 0, works; 34-39 need a 10k
+pull-up to 3.3 V). A PN5180 has no power-down here and stays on, as do
+the power LEDs of the reader and board.
 
 ### Spoolman tag scanning
 

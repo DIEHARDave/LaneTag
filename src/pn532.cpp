@@ -12,6 +12,7 @@ constexpr uint8_t CMD_RF_CONFIGURATION = 0x32;
 constexpr uint8_t CMD_IN_DATA_EXCHANGE = 0x40;
 constexpr uint8_t CMD_IN_LIST_PASSIVE_TARGET = 0x4A;
 constexpr uint8_t CMD_IN_RELEASE = 0x52;
+constexpr uint8_t CMD_POWER_DOWN = 0x16;
 
 // After power-up an HSU PN532 is in LowVbat mode and only answers
 // SAMConfiguration sent right behind a 0x55 wakeup run (as libnfc does).
@@ -62,6 +63,16 @@ void Pn532::attachUart(HardwareSerial &serial, int rx, int tx, uint32_t baud) {
 void Pn532::end() {
     ok_ = false;
     if (bus_ == Pn532Bus::UART && serial_) serial_->end();
+}
+
+void Pn532::powerDown() {
+    if (!ok_) return;
+    // Woken by the next frame on I2C, SPI or HSU (init's first try may be
+    // lost to that).
+    const uint8_t wakeUpEnable[] = {0xB0};
+    uint8_t resp[4];
+    command(CMD_POWER_DOWN, wakeUpEnable, sizeof(wakeUpEnable), resp, sizeof(resp), 300);
+    ok_ = false;
 }
 
 bool Pn532::init() {

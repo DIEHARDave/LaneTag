@@ -39,6 +39,8 @@ public:
     void showSlot();
     // Wake the screen.
     void wake();
+    // Screen off (before deep sleep).
+    void off();
 
     bool enabled() const { return u8g2_ != nullptr || tft_ != nullptr; }
     String error() const { return error_; }

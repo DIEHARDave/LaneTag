@@ -182,6 +182,11 @@ void Tft::wake() {
     }
 }
 
+void Tft::off() {
+    if (lcd_) lcd_->setBrightness(0);
+    asleep_ = true;
+}
+
 bool Tft::readTouch(int &x, int &y) {
     int rawX, rawY;
     if (!touchRaw(rawX, rawY)) return false;
@@ -204,6 +209,7 @@ void Tft::loop() {
     bool down = readTouch(x, y);
     if (down && !touchDown_ && millis() - lastTouch_ > TOUCH_REPEAT) {
         lastTouch_ = millis();
+        app.usedAt = lastTouch_;
         // A touch on a dark screen only wakes it.
         if (asleep_)
             wake();

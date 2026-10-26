@@ -173,6 +173,14 @@ void Display::wake() {
     }
 }
 
+void Display::off() {
+#ifdef HAS_TFT
+    if (tft_) return tft_->off();
+#endif
+    if (u8g2_) u8g2_->setPowerSave(1);
+    asleep_ = true;
+}
+
 void Display::loop() {
 #ifdef HAS_TFT
     if (tft_) return tft_->loop();

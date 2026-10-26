@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "display.h"
+#include "feedback.h"
 #include "reader.h"
 
 // How a scan reaches a printer.
@@ -132,11 +133,12 @@ struct Config {
     std::vector<PrinterConfig> printers;
     int active = 0;             // printer scans go to
     ReaderPins reader;
-    int ledPin = -1;
-    bool ledActiveLow = false;
+    LedConfig led;
     int buzzerPin = -1;
     // Push button (to ground) that steps the active printer's slot; -1: none.
     int buttonPin = -1;
+    // Deep sleep after this long without use, woken by the button; 0: never.
+    int sleepMinutes = 0;
     DisplayConfig display;
     // Spoolman to report every scan to ("host" or "host:port"; "": none),
     // for its web page's tag scanning.

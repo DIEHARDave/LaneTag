@@ -40,6 +40,8 @@ public:
     virtual void release() = 0;
     // Failed commands in a row; the caller re-inits the chip after a few.
     virtual int failures() const = 0;
+    // Into the chip's power-down mode (before deep sleep); init() wakes it.
+    virtual void powerDown() {}
 
     // ISO 15693, on chips that have it.
     virtual bool hasIso15693() const { return false; }

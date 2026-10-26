@@ -17,6 +17,8 @@ bool restartPending = false;
 uint32_t restartAt = 0;
 
 bool authorized() {
+    // The page's own polling does not keep the reader from sleeping.
+    if (server.uri() != "/api/status" && server.uri() != "/api/slots") app.usedAt = millis();
     if (!app.config.uiPassword.length()) return true;
     if (server.authenticate("admin", app.config.uiPassword.c_str())) return true;
     server.requestAuthentication(BASIC_AUTH, "LaneTag");

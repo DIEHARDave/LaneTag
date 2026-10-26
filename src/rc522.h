@@ -28,6 +28,7 @@ public:
     int exchange(const uint8_t *data, size_t len, uint8_t *out, size_t expect,
                  uint32_t timeoutMs = 1000) override;
     void release() override;
+    void powerDown() override;
     int failures() const override { return failures_; }
 
 private:

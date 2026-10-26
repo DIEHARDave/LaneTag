@@ -32,6 +32,9 @@ struct App {
     String apName;
     String wifiError;           // why the home network could not be joined
     uint32_t quietUntil = 0;    // millis() until which the reader is not polled
+    // millis() of the last scan, button press, touch or page action (for
+    // the sleep timer).
+    uint32_t usedAt = 0;
 
     String readerName() const;
     // A new tag was read: decode it and send it to the active printer.

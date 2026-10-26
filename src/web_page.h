@@ -139,11 +139,16 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
       <div class="spi"><label for="ss" id="ssLabel">SDA (SS) pin</label><input id="ss" type="number"></div>
       <div class="pn5180"><label for="busy">BUSY pin</label><input id="busy" type="number"></div>
       <div class="spi"><label for="rst">RST pin (-1: not wired)</label><input id="rst" type="number"></div>
-      <div><label for="ledPin">LED pin (-1: none)</label><input id="ledPin" type="number"></div>
-      <div><label for="ledLow">LED lights when</label><select id="ledLow"><option value="0">high</option><option value="1">low</option></select></div>
+      <div><label for="ledType">LED</label><select id="ledType"><option value="single">Single LED</option><option value="rgb">RGB LED (3 pins)</option><option value="ws2812">WS2812 / NeoPixel</option></select></div>
+      <div><label for="ledPin" id="ledPinLabel">LED pin (-1: none)</label><input id="ledPin" type="number"></div>
+      <div class="led-rgb"><label for="ledGreen">Green pin (-1: none)</label><input id="ledGreen" type="number"></div>
+      <div class="led-rgb"><label for="ledBlue">Blue pin (-1: none)</label><input id="ledBlue" type="number"></div>
+      <div class="led-pins"><label for="ledLow">LED lights when</label><select id="ledLow"><option value="0">high</option><option value="1">low</option></select></div>
       <div><label for="buzzerPin">Buzzer pin (-1: none)</label><input id="buzzerPin" type="number"></div>
       <div><label for="buttonPin">Slot button pin (-1: none)</label><input id="buttonPin" type="number"></div>
+      <div><label for="sleepMinutes">Sleep after minutes unused (0: never)</label><input id="sleepMinutes" type="number" min="0" max="1440"></div>
     </div>
+    <div class="hint">Sleep is for a reader on a battery: after that long without a scan, button press, touch or use of this page, the reader, screen and Wi-Fi switch off and the board draws almost nothing. A press of the slot button wakes it; it is back on the network in a few seconds, then scans as usual. Only some pins can wake the board (C3: GPIO 0-5, so not its BOOT button; C6: 0-7; S3: 0-21; ESP32: 0, 2, 4, 12-15, 25-27, 32-39, and 34-39 need a 10k pull-up to 3.3 V). A PN5180 stays powered while the board sleeps, as do the power LEDs of the reader and board.</div>
     <div class="actions"><button class="btn primary" id="saveSettings">Save</button></div>
     <div class="msg" id="settingsMsg"></div>
   </div>
@@ -582,6 +587,16 @@ function showBus() {
   $("ssLabel").textContent = chip === "pn5180" ? "NSS pin" : "SDA (SS) pin";
 }
 $("chip").onchange = showBus;
+
+// An RGB LED or WS2812 shows blue for a read, green when the printer took
+// it, red for a failure, yellow while a slot has to be picked.
+function showLed() {
+  const type = $("ledType").value;
+  document.querySelectorAll(".led-rgb").forEach(e => e.classList.toggle("hidden", type !== "rgb"));
+  document.querySelectorAll(".led-pins").forEach(e => e.classList.toggle("hidden", type === "ws2812"));
+  $("ledPinLabel").textContent = type === "rgb" ? "Red pin (-1: none)" : type === "ws2812" ? "Data pin (-1: none)" : "LED pin (-1: none)";
+}
+$("ledType").onchange = showLed;
 $("bus").onchange = showBus;
 
 const READER_PINS = ["sda", "scl", "rx", "tx", "sck", "miso", "mosi", "ss", "rst", "busy"];
@@ -594,10 +609,15 @@ function renderSettings() {
   $("chip").value = config.reader.chip || "pn532";
   $("bus").value = config.reader.bus;
   for (const k of READER_PINS) $(k).value = config.reader[k];
+  $("ledType").value = config.led_type || "single";
   $("ledPin").value = config.led_pin;
+  $("ledGreen").value = config.led_green_pin;
+  $("ledBlue").value = config.led_blue_pin;
   $("ledLow").value = config.led_active_low ? 1 : 0;
+  showLed();
   $("buzzerPin").value = config.buzzer_pin;
   $("buttonPin").value = config.button_pin;
+  $("sleepMinutes").value = config.sleep_minutes;
   const d = config.display || {};
   $("dispType").value = d.type || "none";
   $("dispSda").value = d.sda;
@@ -638,8 +658,9 @@ async function saveSettings(msg, join) {
   const body = {
     wifi_ssid: $("ssid").value.trim(), hostname: $("hostname").value.trim(),
     reader: Object.assign({chip: $("chip").value, bus: $("bus").value}, ...READER_PINS.map(k => ({[k]: +$(k).value}))),
-    led_pin: +$("ledPin").value, led_active_low: $("ledLow").value === "1", buzzer_pin: +$("buzzerPin").value,
-    button_pin: +$("buttonPin").value, display: displaySettings(),
+    led_type: $("ledType").value, led_pin: +$("ledPin").value, led_green_pin: +$("ledGreen").value,
+    led_blue_pin: +$("ledBlue").value, led_active_low: $("ledLow").value === "1", buzzer_pin: +$("buzzerPin").value,
+    button_pin: +$("buttonPin").value, sleep_minutes: +$("sleepMinutes").value, display: displaySettings(),
   };
   if ($("wifiPass").value) body.wifi_pass = $("wifiPass").value;
   if (join) body.join = true;

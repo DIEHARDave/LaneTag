@@ -28,6 +28,8 @@ public:
     bool poll(Tag &tag);
     // Read the card on the reader again on the next poll.
     void forget() { presentLen_ = 0; }
+    // The chip's power-down mode (PN532, RC522), before deep sleep.
+    void powerDown() { chip_->powerDown(); }
 
     bool connected() const { return chip_->ready(); }
     String describe() const;
