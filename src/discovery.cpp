@@ -57,7 +57,8 @@ String subnet, failure;
 void add(Found f) {
     xSemaphoreTake(lock, portMAX_DELAY);
     for (Found &old : found) {
-        if (old.host != f.host) continue;
+        // A Spoolman server is listed beside the printer on the same host.
+        if (old.host != f.host || (old.model == Model::Spoolman) != (f.model == Model::Spoolman)) continue;
         if (f.rank > old.rank) {
             if (!f.serial.length()) f.serial = old.serial;
             old = f;
@@ -437,6 +438,21 @@ void identifyAnycubic(const String &host) {
     add(f);
 }
 
+void identifySpoolman(const String &host) {
+    JsonDocument info;
+    if (!getJson("http://" + host + ":" + String(SPOOLMAN_PORT) + "/api/v1/info", info) ||
+        !info["version"].is<const char *>())
+        return;
+    Found f;
+    f.host = host;
+    f.rank = 3;
+    f.model = Model::Spoolman;
+    f.method = Method::Spoolman;
+    f.name = "Spoolman";
+    f.note = "Spoolman " + String(info["version"].as<const char *>()) + ": scans are looked up there, no printer";
+    add(f);
+}
+
 // --- The search --------------------------------------------------------------
 
 void search(void *) {
@@ -484,12 +500,14 @@ void search(void *) {
     std::vector<uint32_t> alive;
     for (size_t i = 0; i < hosts.size(); i++)
         if (moonraker[i] != Seen::Absent) alive.push_back(hosts[i]);
-    std::vector<Seen> creality, anycubic;
-    sweep(alive, CREALITY_PORT, creality, RETRY_TIMEOUT, 75, 85, udp);
-    sweep(alive, ANYCUBIC_PORT, anycubic, RETRY_TIMEOUT, 85, 95, udp);
+    std::vector<Seen> creality, anycubic, spoolman;
+    sweep(alive, CREALITY_PORT, creality, RETRY_TIMEOUT, 75, 82, udp);
+    sweep(alive, ANYCUBIC_PORT, anycubic, RETRY_TIMEOUT, 82, 89, udp);
+    sweep(alive, SPOOLMAN_PORT, spoolman, RETRY_TIMEOUT, 89, 95, udp);
     for (size_t i = 0; i < alive.size(); i++) {
         if (creality[i] == Seen::Open) identifyCreality(ipText(alive[i]));
         if (anycubic[i] == Seen::Open) identifyAnycubic(ipText(alive[i]));
+        if (spoolman[i] == Seen::Open) identifySpoolman(ipText(alive[i]));
         udp.poll();
     }
     while (millis() - started < LISTEN_MIN) {

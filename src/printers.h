@@ -26,6 +26,7 @@ struct SlotInfo {
 struct SlotList {
     bool ok = false;
     String error;
+    String note;        // the Test button's reply instead of the slot count
     std::vector<SlotInfo> slots;
 };
 

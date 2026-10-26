@@ -36,14 +36,17 @@ enum class Method : uint8_t {
                       // save_variables through Moonraker
     SnapmakerStock = 11,  // Snapmaker U1 stock firmware: SET_PRINT_FILAMENT_CONFIG
                           // through Moonraker (head type, vendor and color)
+    Spoolman = 12,    // no printer: Spoolman's own API finds the spool, binds
+                      // the tag to it or adds it (a reader by the shelf)
 };
 
 // Adventurer5M: the Flashforge AD5M (Adventurer 5M) on Zmod or Forge-X. Neither its stock
 // firmware nor Zmod keep a filament there, so it takes the lane data method
-// (Moonraker), always for its one tool.
+// (Moonraker), always for its one tool. Spoolman: not a printer, a Spoolman
+// server (one "slot").
 enum class Model : uint8_t {
     AD5X = 0, Creator5 = 1, SnapmakerU1 = 2, Bambu = 3, Klipper = 4, Adventurer5M = 5, Creality = 6,
-    Anycubic = 7, Qidi = 8
+    Anycubic = 7, Qidi = 8, Spoolman = 9
 };
 
 // Whether a printer model takes a method: the U1, Bambu and Klipper printers
@@ -61,6 +64,7 @@ constexpr uint16_t BAMBU_PORT = 8883;
 constexpr uint16_t CREALITY_PORT = 9999;
 // Anycubic's LAN handshake; its MQTT broker's port comes from the handshake.
 constexpr uint16_t ANYCUBIC_PORT = 18910;
+constexpr uint16_t SPOOLMAN_PORT = 7912;
 // Bambu and Creality: PrinterConfig::unit for the external spool holder.
 constexpr int EXTERNAL_SPOOL = 0;
 
@@ -74,7 +78,12 @@ struct PrinterConfig {
     String checkCode;           // stock: the printer's check code; Bambu: its
                                 // LAN access code
     String apiKey;              // Zmod methods: Moonraker API key, when the reader
-                                // is not in Moonraker's trusted_clients
+                                // is not in Moonraker's trusted_clients; Spoolman:
+                                // sent as X-Api-Key (for a proxy in front of it)
+    // Spoolman: add spools for tags it does not know, and the location to
+    // give scanned spools ("" leaves it).
+    bool spoolmanCreate = true;
+    String location;
     // A reader fixed to one slot (one reader per IFS slot or toolhead):
     // scans go straight into this slot, with no prompt. 0: ask.
     int slot = 0;
@@ -95,7 +104,7 @@ struct PrinterConfig {
     // Klipper printer has, else SLOT_COUNT.
     int slotCount() const {
         if (((model == Model::Bambu || model == Model::Creality) && unit == EXTERNAL_SPOOL) ||
-            model == Model::Adventurer5M)
+            model == Model::Adventurer5M || model == Model::Spoolman)
             return 1;
         if (model == Model::Klipper && slotsFound > 0) return slotsFound;
         return SLOT_COUNT;

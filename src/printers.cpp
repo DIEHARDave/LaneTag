@@ -9,6 +9,7 @@
 #include "bambu.h"
 #include "creality.h"
 #include "decoders.h"
+#include "spoolman.h"
 
 namespace {
 
@@ -1579,6 +1580,7 @@ PrinterReply assignSlot(const PrinterConfig &printer, const Tag &tag, const Fila
     case Method::CrealityCfs: return crealityAssign(printer, filament, slot);
     case Method::AnycubicAce: return anycubicAssign(printer, filament, slot);
     case Method::QidiBox: return qidiAssign(printer, filament, slot);
+    case Method::Spoolman: return spoolmanScan(printer, tag, filament);
     default: return stockAssign(printer, filament, slot);
     }
 }
@@ -1600,6 +1602,7 @@ SlotList listSlots(const PrinterConfig &printer) {
     case Method::CrealityCfs: return crealitySlots(printer);
     case Method::AnycubicAce: return anycubicSlots(printer);
     case Method::QidiBox: return qidiSlots(printer);
+    case Method::Spoolman: return spoolmanStatus(printer);
     default: return stockSlots(printer);
     }
 }
@@ -1617,6 +1620,10 @@ PrinterReply testReply(const SlotList &slots) {
     PrinterReply reply;
     reply.ok = slots.ok;
     size_t n = slots.slots.size();
+    if (slots.ok && slots.note.length()) {
+        reply.message = slots.note;
+        return reply;
+    }
     reply.message = slots.ok ? "Connected; " + String(n) + (n == 1 ? " slot" : " slots") : slots.error;
     return reply;
 }

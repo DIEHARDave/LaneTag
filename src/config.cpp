@@ -116,6 +116,7 @@ const char *methodName(Method method) {
     case Method::AnycubicAce: return "anycubic_ace";
     case Method::QidiBox: return "qidi_box";
     case Method::SnapmakerStock: return "snapmaker_stock";
+    case Method::Spoolman: return "spoolman";
     default: return "stock";
     }
 }
@@ -130,6 +131,7 @@ bool methodFits(Model model, Method method) {
     case Model::Creality: return method == Method::CrealityCfs;
     case Model::Anycubic: return method == Method::AnycubicAce;
     case Model::Qidi: return method == Method::QidiBox;
+    case Model::Spoolman: return method == Method::Spoolman;
     default: return method == Method::ZmodNfc || method == Method::ZmodBasic || method == Method::Stock;
     }
 }
@@ -144,6 +146,7 @@ const char *modelName(Model model) {
     case Model::Creality: return "creality";
     case Model::Anycubic: return "anycubic";
     case Model::Qidi: return "qidi";
+    case Model::Spoolman: return "spoolman";
     default: return "ad5x";
     }
 }
@@ -162,6 +165,7 @@ uint16_t PrinterConfig::effectivePort() const {
     case Method::Bambu: return BAMBU_PORT;
     case Method::CrealityCfs: return CREALITY_PORT;
     case Method::AnycubicAce: return ANYCUBIC_PORT;
+    case Method::Spoolman: return SPOOLMAN_PORT;
     default: return FLASHFORGE_PORT;
     }
 }
@@ -214,6 +218,10 @@ void configToJson(const Config &config, JsonObject out, bool secrets) {
             p.model == Model::Anycubic || p.model == Model::Qidi)
             o["unit"] = p.unit;
         if (p.model == Model::Klipper) o["slots_found"] = p.slotsFound;
+        if (p.model == Model::Spoolman) {
+            o["create"] = p.spoolmanCreate;
+            o["location"] = p.location;
+        }
         o["serial"] = p.serial;
         secret(o, "check_code", p.checkCode, secrets);
         secret(o, "api_key", p.apiKey, secrets);
@@ -313,6 +321,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
                       : model == "creality"     ? Model::Creality
                       : model == "anycubic"     ? Model::Anycubic
                       : model == "qidi"         ? Model::Qidi
+                      : model == "spoolman"     ? Model::Spoolman
                                                 : Model::AD5X;
             p.method = method == "stock"        ? Method::Stock
                        : method == "zmod_basic" ? Method::ZmodBasic
@@ -325,6 +334,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
                        : method == "anycubic_ace" ? Method::AnycubicAce
                        : method == "qidi_box"   ? Method::QidiBox
                        : method == "snapmaker_stock" ? Method::SnapmakerStock
+                       : method == "spoolman"   ? Method::Spoolman
                                                 : Method::ZmodNfc;
             // The U1, Bambu and Klipper printers take only their own methods.
             if (!methodFits(p.model, p.method)) {
@@ -334,6 +344,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
                 case Model::Creality: p.method = Method::CrealityCfs; break;
                 case Model::Anycubic: p.method = Method::AnycubicAce; break;
                 case Model::Qidi: p.method = Method::QidiBox; break;
+                case Model::Spoolman: p.method = Method::Spoolman; break;
                 case Model::Klipper:
                 case Model::Adventurer5M: p.method = Method::LaneData; break;
                 default: p.method = Method::ZmodNfc; break;
@@ -342,7 +353,12 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
             p.port = constrain(o["port"] | 0, 0, 65535);
             bool external = p.model == Model::Bambu || p.model == Model::Creality;
             p.unit = constrain(o["unit"] | p.unit, external ? EXTERNAL_SPOOL : 1, 4);
-            if (p.model == Model::Adventurer5M) p.unit = 1;
+            if (p.model == Model::Adventurer5M || p.model == Model::Spoolman) p.unit = 1;
+            if (!o["create"].isNull()) p.spoolmanCreate = o["create"].as<bool>();
+            if (o["location"].is<const char *>()) {
+                p.location = o["location"].as<const char *>();
+                p.location.trim();
+            }
             p.slotsFound = constrain(o["slots_found"] | p.slotsFound, 0, SLOT_COUNT);
             // Another printer, method or group of four: count its slots again.
             if (keep >= 0 && keep < (int)config.printers.size()) {
@@ -396,6 +412,7 @@ String slotName(const PrinterConfig &printer, int slot) {
     case Model::Bambu:
         return printer.unit == EXTERNAL_SPOOL ? String("Ext") : String((char)('A' + printer.unit - 1)) + String(slot);
     case Model::Adventurer5M: return "T0";
+    case Model::Spoolman: return "Spoolman";
     case Model::Anycubic:
         return printer.unit <= 1 ? "Slot " + String(slot) : "ACE " + String(printer.unit) + " slot " + String(slot);
     case Model::Qidi:
@@ -420,6 +437,7 @@ String slotShortName(const PrinterConfig &printer, int slot) {
     case Model::Bambu:
     case Model::Creality:
     case Model::Adventurer5M: return slotName(printer, slot);
+    case Model::Spoolman: return "SM";
     case Model::Anycubic:
     case Model::Qidi: return printer.unit <= 1 ? String(slot) : String(printer.unit) + "-" + String(slot);
     case Model::Klipper: {
@@ -434,7 +452,7 @@ String slotShortName(const PrinterConfig &printer, int slot) {
 
 bool takesSpoolOnlyTags(Method method) {
     return method == Method::Snapmaker || method == Method::HappyHare || method == Method::Afc ||
-           method == Method::LaneData;
+           method == Method::LaneData || method == Method::Spoolman;
 }
 
 void loadConfig(Config &config) {
