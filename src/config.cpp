@@ -219,6 +219,7 @@ void configToJson(const Config &config, JsonObject out, bool secrets) {
             p.model == Model::Anycubic || p.model == Model::Qidi)
             o["unit"] = p.unit;
         if (p.model == Model::Klipper) o["slots_found"] = p.slotsFound;
+        if (p.method == Method::Afc) o["next_lane"] = p.nextLane;
         if (p.model == Model::Spoolman) {
             o["create"] = p.spoolmanCreate;
             o["location"] = p.location;
@@ -361,6 +362,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
             p.unit = constrain(o["unit"] | p.unit, external ? EXTERNAL_SPOOL : 1, 4);
             if (p.model == Model::Adventurer5M || p.model == Model::Spoolman) p.unit = 1;
             if (!o["create"].isNull()) p.spoolmanCreate = o["create"].as<bool>();
+            if (!o["next_lane"].isNull()) p.nextLane = o["next_lane"].as<bool>();
             if (o["location"].is<const char *>()) {
                 p.location = o["location"].as<const char *>();
                 p.location.trim();

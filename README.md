@@ -66,7 +66,7 @@ Each printer on the reader's list uses one of these methods:
 | **Qidi Plus4 / Q2 / Max4**<br><br>Stock firmware (Box) | A Qidi Box, stock firmware | The slot gets the **filament profile, color and vendor** the way the Box's own RFID reader and Qidi Studio set them: three `SAVE_VARIABLE`s through Moonraker (stock Klipper, nothing to install), naming rows of the printer's own `officiall_filas_list.cfg`. The profile is the printer's entry for the tag's material, one named for the tag's modifier first (PLA Silk, PLA Matte, ...), then the Basic one; the color is the closest of the Box's palette (CIEDE2000), and the vendor the tag's brand when the Box knows it, else Generic. Each reader serves **one Box** (slots 1-4). Not while printing. Firmware that stores the newer filament codes (seen on an updated Q2) is refused with a message until that format is known. No Spoolman. |
 | **Creality K1 / K1 Max / K1C / K2 / Hi**<br><br>Stock firmware (CFS) | A CFS, stock firmware | The slot's **material, color, nozzle temperatures** and the matching **entry of the printer's material library** go over the WebSocket Creality Print uses (port 9999, `modifyMaterial`), so the printer's screen and the slicer see it as if it had been picked in Creality Print. The library entry is the tag's own material on a Creality tag, else the tag's brand and material, else a Generic one of the material (its pressure advance comes along). Each reader serves **one CFS** (slots 1A-1D, 2A-2D, ...) or the **external spool**. Like Creality Print it leaves slots alone while the printer prints or the CFS feeds, and never touches a slot holding a Creality RFID spool (the CFS reads that tag itself). Nothing to enter but the IP address. No Spoolman. |
 | **Klipper**<br><br>Happy Hare MMU | Klipper with [Happy Hare](https://github.com/moggieuk/Happy-Hare) | The gate gets the tag's material, color, name, vendor and temperature through Moonraker (`MMU_GATE_MAP`), plus the tag's UID (Happy Hare 4 keeps it with the gate). With Happy Hare's Spoolman support on, a tag naming a Spoolman spool assigns that spool to the gate; in **pull** mode, where the gate map comes from Spoolman, only such tags can change a gate (`MMU_SPOOLMAN`). OrcaSlicer reads Happy Hare's gate map by itself. Each reader covers four gates (0-3, 4-7, ...). |
-| **Klipper**<br><br>AFC | Klipper with [AFC](https://github.com/AFCProject/AFC-Klipper-Add-On) (Box Turtle, Night Owl, ...) | A tag naming a Spoolman spool is assigned to the lane with `SET_SPOOL_ID` (when AFC has Spoolman), and AFC fills in material, color, temperatures and weight from Spoolman; other tags set the lane's material, color and temperatures (`SET_MATERIAL`, `SET_COLOR`, `AFC_SET_SPOOL_TEMP`). AFC writes the lane's lane_data for OrcaSlicer itself. Each reader covers four lanes in AFC's order (whatever they are named). |
+| **Klipper**<br><br>AFC | Klipper with [AFC](https://github.com/AFCProject/AFC-Klipper-Add-On) (Box Turtle, Night Owl, ...) | A tag naming a Spoolman spool is assigned to the lane with `SET_SPOOL_ID` (when AFC has Spoolman), and AFC fills in material, color, temperatures and weight from Spoolman; other tags set the lane's material, color and temperatures (`SET_MATERIAL`, `SET_COLOR`, `AFC_SET_SPOOL_TEMP`). AFC writes the lane's lane_data for OrcaSlicer itself. Each reader covers four lanes in AFC's order (whatever they are named). With **Tags naming a Spoolman spool: Go to the next lane loaded**, no lane is picked: the spool ID goes to AFC's `SET_NEXT_SPOOL_ID`, and AFC gives it to whichever lane you load next (other tags still go to the reader's slot). |
 | **Spoolman (no printer)**<br><br>Spoolman API | A [Spoolman](https://github.com/Donkie/Spoolman) server (port 7912) | No printer: the reader is a **Spoolman station** (by the shelf, the dryer, the scale). The spool is the one whose ID is on the tag, else the one with the tag's UID in its **Card UIDs** field (or nfc2klipper's `nfc_id`), else the only spool with the tag's brand, material and color, and the tag's UID is then added to its Card UIDs. With **Add them as new spools** (the default), a tag with filament data that matches nothing becomes a new spool (vendor and filament reused when Spoolman has them, "Card UIDs" field created if missing). An optional **location** is set on every scanned spool. The reply names the spool and its remaining weight. These are the UIDs zmod_nfc, zmod_afclite and the U1's SpoolLink match, so spools bound here are found by those printers too. |
 | **Klipper**<br><br>Moonraker lane data | Any Klipper printer with Moonraker | The tool's entry in Moonraker's **lane_data** (read by OrcaSlicer's filament sync) gets the material, color, vendor, temperatures and Spoolman spool ID. On a printer with a **single lane**, a tag naming a Spoolman spool also makes it Moonraker's **active spool** (with Spoolman set up in Moonraker). Each reader covers up to four lanes (T0-T3, T4-T7, ...): one per extruder Klipper has, or as many as the printer's lane_data already lists when that is more (an AD5X's IFS feeds four lanes into one extruder). So a plain single-extruder printer only ever offers **T0**. Also works on Zmod printers (Creator 5, AD5X), next to their own methods. |
 
@@ -365,7 +365,10 @@ password `lanetag1`.
 ## Using it
 
 The **Scan** tab shows the last tag: its color, what it decoded to and what
-the printer did, plus the target printer's slots.
+the printer did, plus the target printer's slots. After a whole read the
+reader rests for 3 seconds, so the spool read again as it is lifted off or
+put back cannot replace a good scan (**Read the tag again** on the page
+skips the wait).
 
 * **Zmod + zmod_nfc:** the printer's screen asks which slot the spool goes
   in, just like with a USB reader. Tap a slot there, insert the filament
@@ -405,7 +408,10 @@ the printer did, plus the target printer's slots.
   what the printer now has there, including the Spoolman spool, and says
   when Happy Hare or AFC did not take the tag's spool (AFC, for one,
   refuses a spool already in another lane and says why only in its
-  console).
+  console). AFC set to the next lane loaded: scan the spool, then load it
+  into any lane; the reply can only say that AFC has the spool ID, as AFC
+  does not report it back. A second scan before loading replaces the
+  first.
 
 ### One reader per slot
 

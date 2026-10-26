@@ -274,6 +274,7 @@ void handleTest() {
 void handleRescan() {
     if (!authorized()) return;
     app.reader.forget();
+    app.quietUntil = millis();
     JsonDocument reply;
     reply["ok"] = true;
     sendJson(200, reply);

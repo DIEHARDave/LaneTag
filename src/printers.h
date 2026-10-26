@@ -36,6 +36,10 @@ PrinterReply sendScan(const PrinterConfig &printer, const Tag &tag, const String
 // Put the scanned spool into a slot (1-based).
 PrinterReply assignSlot(const PrinterConfig &printer, const Tag &tag, const Filament &filament,
                         int slot, const String &readerName);
+// AFC: give the tag's Spoolman spool to the next lane loaded. False, with
+// the reason in reply.message and nothing sent, when the tag names no spool
+// or AFC has no Spoolman: the scan then needs a lane.
+bool afcNextLane(const PrinterConfig &printer, const Filament &f, PrinterReply &reply);
 // zmod_nfc: close the plugin's slot prompt.
 void cancelPrompt(const PrinterConfig &printer);
 SlotList listSlots(const PrinterConfig &printer);

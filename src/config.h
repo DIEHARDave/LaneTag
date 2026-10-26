@@ -87,6 +87,10 @@ struct PrinterConfig {
     // A reader fixed to one slot (one reader per IFS slot or toolhead):
     // scans go straight into this slot, with no prompt. 0: ask.
     int slot = 0;
+    // AFC: a tag naming a Spoolman spool goes to whichever lane is loaded
+    // next (SET_NEXT_SPOOL_ID) instead of the slot above; other tags still
+    // go to the slot.
+    bool nextLane = false;
     // Bambu: the AMS unit (1-4, A-D on the printer) whose trays are slots
     // 1-4, or EXTERNAL_SPOOL for the external spool (one slot). Creality: the
     // CFS (1-4) or EXTERNAL_SPOOL, likewise. Anycubic: the ACE (1-4). Qidi: the Box (1-4). Klipper: which

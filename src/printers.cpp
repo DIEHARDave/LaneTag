@@ -1559,6 +1559,32 @@ PrinterReply laneDataAssign(const PrinterConfig &printer, const Tag &tag, const 
 
 }  // namespace
 
+bool afcNextLane(const PrinterConfig &printer, const Filament &f, PrinterReply &reply) {
+    int spoolId = tagSpoolId(f);
+    if (!spoolId) {
+        reply.message = "the tag names no Spoolman spool";
+        return false;
+    }
+    std::vector<AfcLane> lanes;
+    bool spoolman;
+    if (!afcLanes(printer, lanes, spoolman, reply.message)) return true;
+    if (!spoolman) {
+        reply.message = "AFC has no Spoolman";
+        return false;
+    }
+    // AFC keeps one ID and gives it to the next lane whose spool is loaded;
+    // its status does not show it, so there is nothing to read back.
+    PrinterReply run = runGcode(printer, "SET_NEXT_SPOOL_ID SPOOL_ID=" + String(spoolId));
+    if (!run.ok) {
+        reply = run;
+        return true;
+    }
+    reply.ok = true;
+    reply.spoolId = spoolId;
+    reply.message = "Spoolman spool " + String(spoolId) + " goes to the next lane you load (a new scan replaces it)";
+    return true;
+}
+
 PrinterReply sendScan(const PrinterConfig &printer, const Tag &tag, const String &readerName, int slot) {
     if (printer.method == Method::ZmodNfc) return zmodNfcScan(printer, tag, readerName, slot);
     PrinterReply reply;

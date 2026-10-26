@@ -24,7 +24,8 @@
 //               over Creality Print's WebSocket
 //   happy_hare, afc, lane_data
 //               Klipper printers through Moonraker: Happy Hare's gate map,
-//               AFC's lanes, or plain lane_data (Spoolman through each)
+//               AFC's lanes (or the next lane loaded), or plain lane_data
+//               (Spoolman through each)
 // For zmod_basic and stock the slot is picked on the web page, or set once
 // as the automatic slot; the U1 always has a fixed head. The board's button
 // steps that slot (see buttonLoop).
@@ -46,6 +47,9 @@ constexpr uint32_t POLL_INTERVAL = 250;
 constexpr uint32_t WIFI_WAIT = 30000;
 // A scan nobody picked a slot for is dropped after this long.
 constexpr uint32_t SLOT_WAIT = 10 * 60 * 1000;
+// After a whole read the reader rests this long, so the spool read again as
+// it is lifted off or put back (often only partly) cannot replace the scan.
+constexpr uint32_t SCAN_HOLDOFF = 3000;
 // With the setup access point up, the home network is retried this often.
 // A retry briefly disturbs the access point, so it waits longer while
 // someone is connected to it, but never stops (a phone left on the setup
@@ -250,14 +254,26 @@ void App::handleTag(const Tag &tag) {
         feedback.play(Signal::Failure);
         return;
     }
+    String noNextLane;
+    if (printer->method == Method::Afc && printer->nextLane) {
+        sending();
+        PrinterReply reply;
+        if (afcNextLane(*printer, last.filament, reply)) {
+            record(reply);
+            return;
+        }
+        noNextLane = " (not the next lane loaded: " + reply.message + ")";
+    }
     if (printer->slot > 0) {
         sending();
-        record(assignSlot(*printer, tag, last.filament, printer->slot, readerName()));
+        PrinterReply reply = assignSlot(*printer, tag, last.filament, printer->slot, readerName());
+        reply.message += noNextLane;
+        record(reply);
         return;
     }
     last.waiting = true;
     last.ok = true;
-    last.status = "Pick a slot on this page";
+    last.status = "Pick a slot on this page" + noNextLane;
     feedback.play(Signal::Waiting);
 }
 
@@ -357,8 +373,10 @@ void loop() {
         app.last.waiting = false;
         app.last.status = "No slot was picked";
     }
-    if (millis() - lastPoll < POLL_INTERVAL) return;
+    if (millis() - lastPoll < POLL_INTERVAL || (int32_t)(millis() - app.quietUntil) < 0) return;
     lastPoll = millis();
     Tag tag;
-    if (app.reader.poll(tag)) app.handleTag(tag);
+    if (!app.reader.poll(tag)) return;
+    app.handleTag(tag);
+    if (!tag.incomplete) app.quietUntil = millis() + SCAN_HOLDOFF;
 }

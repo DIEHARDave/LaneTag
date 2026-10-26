@@ -438,6 +438,7 @@ function printerCard(p, i) {
     <div><label>Method</label><select data-k="method">${methodOptions(p)}</select></div>
     <div><label>Port</label><input data-k="port" type="number" value="${p.port || ""}" placeholder="${ph}"></div>
     <div class="m-slot"><label>Slot for this reader</label><select data-k="slot">${slotOptions(p)}</select></div>
+    <div class="m-afc"><label>Tags naming a Spoolman spool</label><select data-k="next_lane"><option value="0">Go to the slot above</option><option value="1" ${p.next_lane ? "selected" : ""}>Go to the next lane loaded</option></select></div>
     <div class="m-spoolman"><label>Location for scanned spools</label><input data-k="location" value="${esc(p.location)}" placeholder="leave as it is"></div>
     <div class="m-spoolman"><label>Tags Spoolman does not know</label><select data-k="create"><option value="1">Add them as new spools</option><option value="0" ${p.create === false ? "selected" : ""}>Leave them out</option></select></div>
     <div class="m-stock"><label>Serial number</label><input data-k="serial" value="${esc(p.serial)}"></div>
@@ -482,6 +483,7 @@ function showMethodFields(card) {
   card.querySelectorAll(".m-unit").forEach(e => e.classList.toggle("hidden", !["bambu", "creality", "anycubic", "qidi", "klipper"].includes(model)));
   card.querySelectorAll(".m-spoolman").forEach(e => e.classList.toggle("hidden", m !== "spoolman"));
   card.querySelectorAll(".m-slot").forEach(e => e.classList.toggle("hidden", m === "spoolman"));
+  card.querySelectorAll(".m-afc").forEach(e => e.classList.toggle("hidden", m !== "afc"));
   card.querySelector(".key-label").textContent = m === "spoolman" ? "API key (only behind a proxy)" : "Moonraker API key (if needed)";
   card.querySelectorAll(".m-zmod").forEach(e => e.classList.toggle("hidden", ["stock", "bambu", "creality_cfs", "anycubic_ace"].includes(m)));
   card.querySelector(".code-label").textContent = m === "bambu" ? "Access code" : "Check code";
@@ -512,7 +514,7 @@ function collectPrinters() {
     card.querySelectorAll("[data-k]").forEach(e => {
       const k = e.dataset.k;
       if (k === "check_code" || k === "api_key") { if (e.value) p[k] = e.value; else delete p[k]; }
-      else if (k === "create") p[k] = e.value === "1";
+      else if (k === "create" || k === "next_lane") p[k] = e.value === "1";
       else if (k === "port" || k === "slot" || k === "unit") p[k] = +e.value || 0;
       else p[k] = e.value.trim();
     });
