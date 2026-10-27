@@ -164,11 +164,11 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
   <div class="card">
     <h2>Display</h2>
     <div class="grid">
-      <div><label for="dispType">Screen</label><select id="dispType"><option value="none">None</option><option value="ssd1306">OLED SSD1306 (0.96", I2C)</option><option value="sh1106">OLED SH1106 (1.3", I2C)</option><option value="cyd">CYD 2.8" touch (ESP32-2432S028)</option><option value="cyd-st7789">CYD 2.8" touch, ST7789 (two USB ports)</option><option value="c6-lcd147">Waveshare ESP32-C6-LCD-1.47</option></select></div>
+      <div><label for="dispType">Screen</label><select id="dispType"><option value="none">None</option><option value="ssd1306">OLED SSD1306 (0.96", I2C)</option><option value="sh1106">OLED SH1106 (1.3", I2C)</option><option value="lcd1602">LCD 1602 (16x2, I2C backpack)</option><option value="cyd">CYD 2.8" touch (ESP32-2432S028)</option><option value="cyd-st7789">CYD 2.8" touch, ST7789 (two USB ports)</option><option value="c6-lcd147">Waveshare ESP32-C6-LCD-1.47</option></select></div>
       <div class="disp oled"><label for="dispSda">SDA pin</label><input id="dispSda" type="number"></div>
       <div class="disp oled"><label for="dispScl">SCL pin</label><input id="dispScl" type="number"></div>
-      <div class="disp oled"><label for="dispAddr">Address</label><select id="dispAddr"><option value="60">0x3C</option><option value="61">0x3D</option></select></div>
-      <div class="disp"><label for="dispFlip">Orientation</label><select id="dispFlip"><option value="0">Normal</option><option value="1">Upside down</option></select></div>
+      <div class="disp oled"><label for="dispAddr">Address</label><select id="dispAddr"><option value="60">0x3C</option><option value="61">0x3D</option><option value="39">0x27</option><option value="63">0x3F</option></select></div>
+      <div class="disp flip"><label for="dispFlip">Orientation</label><select id="dispFlip"><option value="0">Normal</option><option value="1">Upside down</option></select></div>
       <div class="disp"><label for="dispSleep">Screen off after (minutes, 0: never)</label><input id="dispSleep" type="number" min="0"></div>
     </div>
     <div class="hint">Shows the active printer and slot, and the filament of the last scan. It can share the PN532's I2C pins. Boards with a built-in 0.96" OLED (such as the Ideaspark ESP32) usually have it on SDA 21 / SCL 22. The CYD touch screen (classic ESP32 builds only) also has buttons: tap the printer name for the next printer, the bottom row for the fixed slot, and a scan waiting for a slot can be put into one there.</div>
@@ -636,11 +636,19 @@ function displaySettings() {
 }
 function showDisplay() {
   const type = $("dispType").value;
-  document.querySelectorAll(".disp").forEach(e => e.classList.toggle("hidden", type === "none" || (e.classList.contains("oled") && (type.startsWith("cyd") || type === "c6-lcd147"))));
+  document.querySelectorAll(".disp").forEach(e => e.classList.toggle("hidden", type === "none" ||
+    (e.classList.contains("oled") && (type.startsWith("cyd") || type === "c6-lcd147")) ||
+    (e.classList.contains("flip") && type === "lcd1602")));
   const d = status && status.display;
   setStatus($("dispMsg"), d && d.error ? d.error : "", d ? !d.error : undefined);
 }
-$("dispType").onchange = showDisplay;
+$("dispType").onchange = () => {
+  // OLEDs answer at 0x3C/0x3D, LCD backpacks at 0x27/0x3F.
+  const lcd = $("dispType").value === "lcd1602", addr = +$("dispAddr").value;
+  if (lcd && addr >= 60) $("dispAddr").value = "39";
+  if (!lcd && addr < 60) $("dispAddr").value = "60";
+  showDisplay();
+};
 $("saveReport").onclick = async () => {
   const r = await api("/api/config", {spoolman_report: $("smReport").value.trim()});
   setStatus($("reportMsg"), r.ok ? "Saved" : r.error, r.ok);

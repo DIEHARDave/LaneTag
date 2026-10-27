@@ -105,7 +105,8 @@ Each printer on the reader's list uses one of these methods:
   BOOT button picks the slot (GPIO 0, GPIO 9 on the C3; see
   [Choosing the slot with the button](#choosing-the-slot-with-the-button)).
 * Optional: a 128x64 I2C OLED (SSD1306 0.96" or SH1106 1.3"), see
-  [The display](#the-display).
+  [The display](#the-display), or a 16x2 I2C LCD, see
+  [A 16x2 character LCD](#a-16x2-character-lcd).
 * Or an **ESP32-2432S028** ("Cheap Yellow Display", CYD): a classic ESP32
   with a 2.8" 320x240 touch screen on the board. It shows the filament's
   color and has touch buttons for the printer and slot, see
@@ -547,6 +548,27 @@ similar) have it on SDA 21 / SCL 22 at 0x3C.
 If the display stays dark, **Settings** shows why: which addresses answer on
 its pins, whether SDA or SCL is held low, or that nothing answers at all
 (usually a loose jumper, VCC/GND, or SDA and SCL swapped).
+
+### A 16x2 character LCD
+
+The common "1602 I2C" LCD (an HD44780 with a PCF8574 backpack) works too:
+choose **LCD 1602** under **Settings > Display**, its SDA and SCL pins and
+address **0x27** (**0x3F** on backpacks with a PCF8574A). It shows the same
+screens as the OLED in two rows of 16 characters, and rows too long for it
+scroll:
+
+* idle: the active printer and its slot, then the IP address
+* after a scan: the filament (and Spoolman spool `#19`), then brand, color,
+  nozzle temperature and what happened, or the error or the slot to pick
+* the slot button: `Scans -> Slot 2`
+
+These modules run on 5 V: below that the characters are barely visible.
+Power the module from 5V (VIN), not 3V3. The backpack's pull-ups then
+hold SDA and SCL at 5 V, which the ESP32 is not made for. Take its two
+pull-up resistors off (or use a level shifter) and put 4.7 kΩ pull-ups to
+3V3 instead; the PCF8574 reads 3.3 V fine. If the screen lights but stays
+empty, or shows a row of blocks, turn the contrast trimmer on the back.
+**Screen off after** switches the backlight off.
 
 ### The CYD touch screen
 

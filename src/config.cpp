@@ -335,6 +335,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
                             : type == "cyd"        ? DisplayType::CydIli9341
                             : type == "cyd-st7789" ? DisplayType::CydSt7789
                             : type == "c6-lcd147"  ? DisplayType::C6Lcd147
+                            : type == "lcd1602"    ? DisplayType::Lcd1602
                                                    : DisplayType::None;
 #ifndef HAS_TFT
         if (isTft(next.display.type)) return "this firmware has no touch screen support (use the esp32dev build)";
@@ -348,7 +349,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
         next.display.sda = pin(display["sda"], next.display.sda);
         next.display.scl = pin(display["scl"], next.display.scl);
         int address = display["address"] | (int)next.display.address;
-        if (address < 0x08 || address > 0x77) return "the display address must be 0x08 to 0x77 (usually 0x3C)";
+        if (address < 0x08 || address > 0x77) return "the display address must be 0x08 to 0x77 (usually 0x3C, or 0x27 for an LCD)";
         next.display.address = address;
         if (!display["flip"].isNull()) next.display.flip = display["flip"].as<bool>();
         next.display.sleepMinutes = constrain(display["sleep"] | next.display.sleepMinutes, 0, 1440);

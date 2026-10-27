@@ -7,6 +7,7 @@
 #include <soc/soc_caps.h>
 
 #include "app.h"
+#include "lcd1602.h"
 #include "tft.h"
 
 namespace {
@@ -25,6 +26,9 @@ constexpr int WIDTH = 128;
 // tile rows, 256 bytes) are sent for it.
 constexpr uint32_t SCROLL_PAUSE = 2000, SCROLL_FRAME = 100;
 constexpr int SCROLL_STEP = 2, SCROLL_GAP = 24, TITLE_BYTES = 256;
+// On the LCD a row too long for it scrolls a character at a time.
+constexpr uint32_t LCD_SCROLL_STEP = 350;
+constexpr int LCD_SCROLL_GAP = 3;
 
 const uint8_t *const SMALL = u8g2_font_5x7_tf;
 const uint8_t *const MEDIUM = u8g2_font_6x10_tf;
@@ -42,6 +46,26 @@ uint8_t byteCallback(u8x8_t *u8x8, uint8_t msg, uint8_t count, void *data) {
     default: return 0;
     }
     return 1;
+}
+
+// The 16 characters of an LCD row shown now: the text itself when it fits,
+// else a window scrolling round it (after a pause at the start).
+String lcdFrame(const String &text, uint32_t since) {
+    if ((int)text.length() <= Lcd1602::COLS) return text;
+    String round = text + String("   ").substring(0, LCD_SCROLL_GAP);
+    uint32_t span = round.length();
+    uint32_t t = (millis() - since) % (SCROLL_PAUSE + span * LCD_SCROLL_STEP);
+    int offset = t < SCROLL_PAUSE ? 0 : (t - SCROLL_PAUSE) / LCD_SCROLL_STEP;
+    return (round + text).substring(offset, offset + Lcd1602::COLS);
+}
+
+// Left and right in one LCD row, the left cut to make room.
+String lcdSplit(String left, const String &right) {
+    int room = Lcd1602::COLS - right.length() - 1;
+    if (room < 1) return right;
+    if ((int)left.length() > room) left.remove(room);
+    while ((int)left.length() < room + 1) left += ' ';
+    return left + right;
 }
 
 struct NamedColor { const char *name; uint32_t rgb; };
@@ -81,6 +105,7 @@ const char *displayTypeName(DisplayType type) {
     case DisplayType::CydIli9341: return "cyd";
     case DisplayType::CydSt7789: return "cyd-st7789";
     case DisplayType::C6Lcd147: return "c6-lcd147";
+    case DisplayType::Lcd1602: return "lcd1602";
     default: return "none";
     }
 }
@@ -101,16 +126,18 @@ void Display::begin(const DisplayConfig &config, const ReaderPins &reader) {
         return;
     }
     bool readerI2C = reader.chip == ReaderChip::PN532 && reader.bus == Pn532Bus::I2C;
+    // The LCD's PCF8574 is a 100 kHz part.
+    uint32_t clock = config.type == DisplayType::Lcd1602 ? 100000 : 400000;
     if (readerI2C && reader.sda == config.sda && reader.scl == config.scl) {
-        // Already started by the PN532 (at 100 kHz, which both are fine with).
+        // Already started by the PN532 (at 100 kHz, which all are fine with).
         bus = &Wire;
     } else if (!readerI2C) {
         bus = &Wire;
-        bus->begin(config.sda, config.scl, 400000);
+        bus->begin(config.sda, config.scl, clock);
     } else {
 #if SOC_I2C_NUM > 1
         bus = &Wire1;
-        bus->begin(config.sda, config.scl, 400000);
+        bus->begin(config.sda, config.scl, clock);
 #else
         error_ = "this chip has one I2C bus: put the display on the reader's SDA and SCL pins";
         return;
@@ -138,6 +165,14 @@ void Display::begin(const DisplayConfig &config, const ReaderPins &reader) {
         log_w("%s", text);
         return;
     }
+    sleepMinutes_ = config.sleepMinutes;
+    changedAt_ = millis();
+    if (config.type == DisplayType::Lcd1602) {
+        lcd_ = new Lcd1602();
+        lcd_->begin(bus, config.address);
+        draw(true);
+        return;
+    }
     u8g2_ = new U8G2();
     const u8g2_cb_t *rotation = config.flip ? U8G2_R2 : U8G2_R0;
     if (config.type == DisplayType::SH1106)
@@ -147,9 +182,7 @@ void Display::begin(const DisplayConfig &config, const ReaderPins &reader) {
     u8g2_->setI2CAddress(config.address << 1);
     u8g2_->begin();
     u8g2_->enableUTF8Print();
-    sleepMinutes_ = config.sleepMinutes;
     memset(shown_, 0xFF, sizeof(shown_));
-    changedAt_ = millis();
     draw(true);
 }
 
@@ -178,6 +211,10 @@ void Display::wake() {
         u8g2_->setPowerSave(0);
         asleep_ = false;
     }
+    if (asleep_ && lcd_) {
+        lcd_->power(true);
+        asleep_ = false;
+    }
 }
 
 void Display::off() {
@@ -185,6 +222,7 @@ void Display::off() {
     if (tft_) return tft_->off();
 #endif
     if (u8g2_) u8g2_->setPowerSave(1);
+    if (lcd_) lcd_->power(false);
     asleep_ = true;
 }
 
@@ -192,11 +230,12 @@ void Display::loop() {
 #ifdef HAS_TFT
     if (tft_) return tft_->loop();
 #endif
-    if (!u8g2_ || millis() - lastDraw_ < (scrolling_ ? SCROLL_FRAME : DRAW_INTERVAL)) return;
+    if ((!u8g2_ && !lcd_) || millis() - lastDraw_ < (scrolling_ ? SCROLL_FRAME : DRAW_INTERVAL)) return;
     draw(false);
 }
 
 void Display::draw(bool force) {
+    if (lcd_) return drawLcd(force);
     if (!u8g2_) return;
     lastDraw_ = millis();
     u8g2_->clearBuffer();
@@ -352,9 +391,35 @@ void Display::renderIdle() {
 //   AD5X-1          Slot 1   (printer and slot)
 void Display::renderScan() {
     footer();
+    String name, brand, detail, status;
+    int spool;
+    scanText(name, brand, detail, status, spool);
+    title(name);
+
+    int y = 15;
+    u8g2_->setFont(MEDIUM);
+    int spoolWidth = 0;
+    if (spool) {
+        String id = "#" + String(spool);
+        spoolWidth = u8g2_->getUTF8Width(id.c_str()) + 4;
+        u8g2_->drawUTF8(WIDTH - spoolWidth + 4, 25, id.c_str());
+    }
+    while (brand.length() > 1 && u8g2_->getUTF8Width(brand.c_str()) > WIDTH - spoolWidth) brand.remove(brand.length() - 1);
+    if (brand.length() || spool) {
+        u8g2_->drawUTF8(0, 25, brand.c_str());
+        y = 25;
+    }
+    if (detail.length()) {
+        y += 10;
+        u8g2_->drawUTF8(0, y, detail.c_str());
+    }
+    // Status lines end above the footer line (y 53).
+    wrap(status, y, (51 - y) / 8);
+}
+
+void Display::scanText(String &name, String &brand, String &detail, String &status, int &spool) {
     const ScanRecord &last = app.last;
     const Filament &f = last.filament;
-    String name, brand, detail;
     if (f.hasFilamentData()) {
         name = f.material;
         if (f.modifiers.length()) name += " " + f.modifiers;
@@ -381,32 +446,81 @@ void Display::renderScan() {
             name = name.substring(n + 1);
         }
     }
-    title(name);
-
-    int y = 15;
-    u8g2_->setFont(MEDIUM);
-    int spool = last.printerSpool ? last.printerSpool : f.spoolId;
-    int spoolWidth = 0;
-    if (spool) {
-        String id = "#" + String(spool);
-        spoolWidth = u8g2_->getUTF8Width(id.c_str()) + 4;
-        u8g2_->drawUTF8(WIDTH - spoolWidth + 4, 25, id.c_str());
-    }
-    while (brand.length() > 1 && u8g2_->getUTF8Width(brand.c_str()) > WIDTH - spoolWidth) brand.remove(brand.length() - 1);
-    if (brand.length() || spool) {
-        u8g2_->drawUTF8(0, 25, brand.c_str());
-        y = 25;
-    }
-    if (detail.length()) {
-        y += 10;
-        u8g2_->drawUTF8(0, y, detail.c_str());
-    }
-
-    String status = last.status;
+    spool = last.printerSpool ? last.printerSpool : f.spoolId;
+    status = last.status;
     if (last.waiting && last.printer >= 0 && last.printer < (int)app.config.printers.size())
         status = app.config.printers[last.printer].method == Method::ZmodNfc ? "Pick the slot on the printer's screen"
                                                                              : "Pick a slot on the web page";
     if (!last.ok && status.length()) status = "! " + status;
-    // Status lines end above the footer line (y 53).
-    wrap(status, y, (51 - y) / 8);
+}
+
+// Only rows that changed go to the LCD: each character is four I2C bytes.
+void Display::drawLcd(bool force) {
+    lastDraw_ = millis();
+    scrolling_ = false;
+    String rows[2];
+    renderLcd(rows);
+    bool changed = force;
+    for (int r = 0; r < 2; r++) {
+        String text = Lcd1602::toLcd(rows[r]);
+        if (text != lcdText_[r]) {
+            lcdText_[r] = text;
+            lcdSince_[r] = millis();
+            changed = true;
+        }
+    }
+    if (changed) wake();
+    if (asleep_) return;
+    for (int r = 0; r < 2; r++) {
+        String frame = lcdFrame(lcdText_[r], lcdSince_[r]);
+        if (force || frame != lcdShown_[r]) {
+            lcd_->row(r, frame);
+            lcdShown_[r] = frame;
+        }
+    }
+    // LCDs do not burn in, but a backlight left on all day is a waste.
+    if (sleepMinutes_ > 0 && millis() - changedAt_ > (uint32_t)sleepMinutes_ * 60000) {
+        lcd_->power(false);
+        asleep_ = true;
+    }
+}
+
+// The OLED's screens in two rows of 16 characters; longer rows scroll.
+void Display::renderLcd(String rows[2]) {
+    const PrinterConfig *printer = app.config.activePrinter();
+    if ((int32_t)(millis() - slotUntil_) < 0) {
+        rows[0] = printer ? printer->name : String("No printer");
+        if (printer) rows[1] = printer->slot ? "Scans -> " + slotName(*printer, printer->slot) : String("Scans ask for the slot");
+        return;
+    }
+    if (app.apMode) {
+        rows[0] = "Wi-Fi setup";
+        rows[1] = "Join " + app.apName + ", password lanetag1, open " + WiFi.softAPIP().toString();
+        if (app.wifiError.length()) rows[1] += ". " + app.wifiError;
+        return;
+    }
+    const ScanRecord &last = app.last;
+    if (last.id && (last.waiting || millis() - last.at < SCAN_SHOWN)) {
+        String name, brand, detail, status;
+        int spool;
+        scanText(name, brand, detail, status, spool);
+        // The spool number on the right, or after a name too long for both.
+        rows[0] = name;
+        String id = "#" + String(spool);
+        if (spool) rows[0] = (int)(name.length() + id.length()) < Lcd1602::COLS ? lcdSplit(name, id) : name + " " + id;
+        if (!last.ok || last.waiting) {
+            rows[1] = status;
+        } else {
+            for (const String *part : {&brand, &detail, &status})
+                if (part->length()) rows[1] += (rows[1].length() ? "  " : "") + *part;
+        }
+        return;
+    }
+    if (!app.reader.connected()) {
+        rows[0] = "No reader";
+        rows[1] = app.reader.error();
+        return;
+    }
+    rows[0] = printer ? lcdSplit(printer->name, slotName(*printer, printer->slot)) : String("No printer");
+    rows[1] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("Wi-Fi lost");
 }
