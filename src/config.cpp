@@ -14,7 +14,25 @@ const char *const NVS_KEY = "config";
 
 // Default pins per chip; all can be changed on the web page. The default
 // button is the board's BOOT button.
-#if CONFIG_IDF_TARGET_ESP32S3
+#if defined(BOARD_C6_LCD147)
+// Waveshare ESP32-C6-LCD-1.47: the screen takes 6, 7, 14, 15, 21 and 22 (and
+// the SPI bus, so the reader is a PN532), the SD slot 4 and 5. The PN532
+// goes on the header's TX/RX in HSU mode; the RGB LED is a WS2812 on 8.
+constexpr int DEFAULT_SDA = 19, DEFAULT_SCL = 20, DEFAULT_RX = 17, DEFAULT_TX = 16;
+constexpr int DEFAULT_SCK = -1, DEFAULT_MISO = -1, DEFAULT_MOSI = -1, DEFAULT_SS = -1, DEFAULT_RST = -1;
+constexpr int DEFAULT_BUSY = -1;
+constexpr int DEFAULT_LED = 8;
+constexpr bool DEFAULT_LED_LOW = false;
+constexpr int DEFAULT_BUTTON = 9;
+const int SCREEN_PINS[] = {6, 7, 14, 15, 21, 22};
+const char *const READER_PIN_KEYS[] = {"sda", "scl", "rx", "tx", "sck", "miso", "mosi", "ss", "rst", "busy"};
+
+bool isScreenPin(int pin) {
+    for (int p : SCREEN_PINS)
+        if (p == pin) return true;
+    return false;
+}
+#elif CONFIG_IDF_TARGET_ESP32S3
 constexpr int DEFAULT_SDA = 8, DEFAULT_SCL = 9, DEFAULT_RX = 18, DEFAULT_TX = 17;
 constexpr int DEFAULT_SCK = 12, DEFAULT_MISO = 13, DEFAULT_MOSI = 11, DEFAULT_SS = 10, DEFAULT_RST = 14;
 constexpr int DEFAULT_BUSY = 15;
@@ -81,6 +99,11 @@ void setDefaults(Config &config) {
     // An OLED most likely shares the reader's I2C pins.
     config.display.sda = DEFAULT_SDA;
     config.display.scl = DEFAULT_SCL;
+#ifdef BOARD_C6_LCD147
+    config.reader.bus = Pn532Bus::UART;
+    config.display.type = DisplayType::C6Lcd147;
+    config.led.type = LedType::Ws2812;
+#endif
 #ifdef BOARD_CYD
     config.reader.bus = Pn532Bus::UART;
     config.display.type = DisplayType::CydIli9341;
@@ -280,6 +303,11 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
             return next.reader.chip == ReaderChip::RC522 ? "the RC522 needs its SCK, MISO, MOSI and SDA (SS) pins"
                                                          : "the PN5180 needs its SCK, MISO, MOSI and NSS pins";
         if (next.reader.chip == ReaderChip::PN5180 && next.reader.busy < 0) return "the PN5180 needs its BUSY pin";
+#ifdef BOARD_C6_LCD147
+        if (spi) return "the screen has this board's SPI bus; use a PN532 (HSU or I2C)";
+        for (int p : {next.reader.sda, next.reader.scl, next.reader.rx, next.reader.tx})
+            if (isScreenPin(p)) return "GPIO " + String(p) + " is the screen's on this board";
+#endif
     }
     if (in["led_type"].is<const char *>()) {
         String type = in["led_type"].as<const char *>();
@@ -306,9 +334,16 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
                             : type == "sh1106"     ? DisplayType::SH1106
                             : type == "cyd"        ? DisplayType::CydIli9341
                             : type == "cyd-st7789" ? DisplayType::CydSt7789
+                            : type == "c6-lcd147"  ? DisplayType::C6Lcd147
                                                    : DisplayType::None;
 #ifndef HAS_TFT
         if (isTft(next.display.type)) return "this firmware has no touch screen support (use the esp32dev build)";
+#elif defined(BOARD_C6_LCD147)
+        if (isTft(next.display.type) && next.display.type != DisplayType::C6Lcd147)
+            return "this firmware drives only the board's own 1.47\" screen";
+#else
+        if (next.display.type == DisplayType::C6Lcd147)
+            return "the 1.47\" screen needs the esp32-c6-lcd build";
 #endif
         next.display.sda = pin(display["sda"], next.display.sda);
         next.display.scl = pin(display["scl"], next.display.scl);
@@ -515,6 +550,13 @@ void loadConfig(Config &config) {
         log_w("stored settings are not valid JSON; using defaults");
         return;
     }
+#ifdef BOARD_C6_LCD147
+    // Saved by the plain ESP32-C6 firmware, whose reader pins are this
+    // board's screen pins (I2C there crashes the I2C driver): back to the
+    // defaults for those.
+    for (const char *key : READER_PIN_KEYS)
+        if (isScreenPin(doc["reader"][key] | -1)) doc["reader"].remove(key);
+#endif
     bool restart;
     String error = configFromJson(config, doc.as<JsonObjectConst>(), restart);
     if (error.length()) log_w("stored settings: %s", error.c_str());

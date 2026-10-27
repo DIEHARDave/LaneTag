@@ -3,6 +3,7 @@
 #include <U8g2lib.h>
 #include <WiFi.h>
 #include <Wire.h>
+#include <driver/gpio.h>
 #include <soc/soc_caps.h>
 
 #include "app.h"
@@ -74,6 +75,7 @@ const char *displayTypeName(DisplayType type) {
     case DisplayType::SH1106: return "sh1106";
     case DisplayType::CydIli9341: return "cyd";
     case DisplayType::CydSt7789: return "cyd-st7789";
+    case DisplayType::C6Lcd147: return "c6-lcd147";
     default: return "none";
     }
 }
@@ -122,9 +124,9 @@ void Display::begin(const DisplayConfig &config, const ReaderPins &reader) {
         }
         if (found.length())
             snprintf(text + n, sizeof(text) - n, "; found %s on these pins", found.c_str());
-        else if (digitalRead(config.sda) == LOW || digitalRead(config.scl) == LOW)
+        else if (!gpio_get_level((gpio_num_t)config.sda) || !gpio_get_level((gpio_num_t)config.scl))
             snprintf(text + n, sizeof(text) - n, "; %s is held low (wiring or power)",
-                     digitalRead(config.sda) == LOW ? "SDA" : "SCL");
+                     !gpio_get_level((gpio_num_t)config.sda) ? "SDA" : "SCL");
         else
             snprintf(text + n, sizeof(text) - n, "; nothing answers on these pins (check VCC, GND, SDA/SCL swap)");
         error_ = text;

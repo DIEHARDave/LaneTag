@@ -164,7 +164,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
   <div class="card">
     <h2>Display</h2>
     <div class="grid">
-      <div><label for="dispType">Screen</label><select id="dispType"><option value="none">None</option><option value="ssd1306">OLED SSD1306 (0.96", I2C)</option><option value="sh1106">OLED SH1106 (1.3", I2C)</option><option value="cyd">CYD 2.8" touch (ESP32-2432S028)</option><option value="cyd-st7789">CYD 2.8" touch, ST7789 (two USB ports)</option></select></div>
+      <div><label for="dispType">Screen</label><select id="dispType"><option value="none">None</option><option value="ssd1306">OLED SSD1306 (0.96", I2C)</option><option value="sh1106">OLED SH1106 (1.3", I2C)</option><option value="cyd">CYD 2.8" touch (ESP32-2432S028)</option><option value="cyd-st7789">CYD 2.8" touch, ST7789 (two USB ports)</option><option value="c6-lcd147">Waveshare ESP32-C6-LCD-1.47</option></select></div>
       <div class="disp oled"><label for="dispSda">SDA pin</label><input id="dispSda" type="number"></div>
       <div class="disp oled"><label for="dispScl">SCL pin</label><input id="dispScl" type="number"></div>
       <div class="disp oled"><label for="dispAddr">Address</label><select id="dispAddr"><option value="60">0x3C</option><option value="61">0x3D</option></select></div>
@@ -636,7 +636,7 @@ function displaySettings() {
 }
 function showDisplay() {
   const type = $("dispType").value;
-  document.querySelectorAll(".disp").forEach(e => e.classList.toggle("hidden", type === "none" || (e.classList.contains("oled") && type.startsWith("cyd"))));
+  document.querySelectorAll(".disp").forEach(e => e.classList.toggle("hidden", type === "none" || (e.classList.contains("oled") && (type.startsWith("cyd") || type === "c6-lcd147"))));
   const d = status && status.display;
   setStatus($("dispMsg"), d && d.error ? d.error : "", d ? !d.error : undefined);
 }

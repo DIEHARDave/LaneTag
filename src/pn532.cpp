@@ -1,5 +1,7 @@
 #include "pn532.h"
 
+#include <driver/gpio.h>
+
 namespace {
 
 constexpr uint8_t I2C_ADDRESS = 0x24;
@@ -31,7 +33,10 @@ void Pn532::attachI2C(TwoWire &wire, int sda, int scl) {
 
 const char *Pn532::stuckLine() {
     if (bus_ != Pn532Bus::I2C || sda_ < 0 || scl_ < 0) return nullptr;
-    if (digitalRead(sda_) && digitalRead(scl_)) return nullptr;
+    // gpio_get_level, not digitalRead: on Arduino core 3 digitalRead of a pin
+    // the I2C driver owns returns garbage, and the needless bus reset that
+    // followed crashed the I2C interrupt handler (ESP32-C6).
+    if (gpio_get_level((gpio_num_t)sda_) && gpio_get_level((gpio_num_t)scl_)) return nullptr;
     // A device that lost a clock mid-byte holds SDA until it is clocked
     // through the rest of the byte (the usual nine-pulse bus clear).
     wire_->end();

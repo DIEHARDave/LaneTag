@@ -245,6 +245,7 @@ pio run -e esp32-s3 -t upload      # ESP32-S3
 pio run -e esp32-c3 -t upload      # ESP32-C3
 pio run -e esp32-c6 -t upload      # ESP32-C6
 pio run -e cyd -t upload           # ESP32-2432S028 (CYD)
+pio run -e esp32-c6-lcd -t upload  # Waveshare ESP32-C6-LCD-1.47
 pio device monitor                 # log output
 ```
 
@@ -257,6 +258,9 @@ the upload starts (the tested CYD did not enter flash mode by itself).
 The `esp32-c6` build uses the [pioarduino](https://github.com/pioarduino/platform-espressif32)
 platform (Arduino core 3.x), because the Arduino core 2.x the other builds
 use has no ESP32-C6 support; PlatformIO downloads it on the first build.
+The `esp32-c6-lcd` build is the same with the Waveshare ESP32-C6-LCD-1.47's
+screen, PN532 (HSU) and RGB LED as defaults; the tested board did not start
+the firmware after a USB upload until it was unplugged and plugged back in.
 
 Later updates can be uploaded from the web page (**Settings > Firmware**,
 the file is `.pio/build/<board>/firmware.bin`).
@@ -567,6 +571,17 @@ shows:
 
 The backlight turns off after **Screen off after** minutes without a
 change; a touch wakes it (that touch does nothing else).
+
+### The Waveshare ESP32-C6-LCD-1.47
+
+The `esp32-c6-lcd` build shows the same screens on this board's 1.47"
+172x320 screen, turned sideways and without touch: the printer and the
+fixed slot are changed with the BOOT button or on the web page, and a scan
+waiting for its slot is put into one on the printer or the web page. The
+screen uses GPIO 6, 7, 14, 15, 21 and 22 and the C6's only SPI bus, so the
+reader is a PN532: in HSU mode, PN532 TXD to GPIO 17 (RX on the header),
+RXD to GPIO 16 (TX), or over I2C on GPIO 19 (SDA) and 20 (SCL). The RGB LED
+(a WS2812 on GPIO 8) shows the scan colors.
 
 ## Tag formats
 

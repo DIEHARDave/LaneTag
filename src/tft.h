@@ -3,6 +3,8 @@
 // touch on its own pins. Besides what the OLED shows, it has the filament's
 // color and buttons: the header picks the printer, the bottom row the
 // fixed slot, and a scan waiting for a slot can be put into one here.
+// Also the 1.47" 320x172 ST7789 of the Waveshare ESP32-C6-LCD-1.47: the
+// same screens, tighter and without touch.
 #pragma once
 
 #ifdef HAS_TFT
@@ -37,9 +39,14 @@ private:
     int wrap(const String &text, int x, int y, int width, int maxLines);
     void touched(int x, int y);
     bool readTouch(int &x, int &y);
+    int slotWidth() const { return w_ / 5; }    // Ask, 1-4
 
     class CydLcd *lcd_ = nullptr;
     String shown_;
+    int w_ = 320, h_ = 240;
+    int header_ = 40, footer_ = 192;            // footer: top of the slot buttons
+    bool compact_ = false;                      // 172 high: tighter rows
+    bool touch_ = true;
     bool flip_ = false;
     bool asleep_ = false;
     bool touchDown_ = false;
