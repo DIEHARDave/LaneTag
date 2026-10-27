@@ -20,6 +20,11 @@ constexpr uint32_t SCAN_SHOWN = 5 * 60 * 1000;
 constexpr uint32_t SLOT_SHOWN = 3000;
 constexpr uint32_t DRAW_INTERVAL = 200;
 constexpr int WIDTH = 128;
+// A title too long even in the smallest font scrolls: still for a moment,
+// then two pixels per frame, round with a gap. Only the top 16 rows (two
+// tile rows, 256 bytes) are sent for it.
+constexpr uint32_t SCROLL_PAUSE = 2000, SCROLL_FRAME = 100;
+constexpr int SCROLL_STEP = 2, SCROLL_GAP = 24, TITLE_BYTES = 256;
 
 const uint8_t *const SMALL = u8g2_font_5x7_tf;
 const uint8_t *const MEDIUM = u8g2_font_6x10_tf;
@@ -187,7 +192,7 @@ void Display::loop() {
 #ifdef HAS_TFT
     if (tft_) return tft_->loop();
 #endif
-    if (!u8g2_ || millis() - lastDraw_ < DRAW_INTERVAL) return;
+    if (!u8g2_ || millis() - lastDraw_ < (scrolling_ ? SCROLL_FRAME : DRAW_INTERVAL)) return;
     draw(false);
 }
 
@@ -195,14 +200,23 @@ void Display::draw(bool force) {
     if (!u8g2_) return;
     lastDraw_ = millis();
     u8g2_->clearBuffer();
+    scrolling_ = false;
     render();
     // Send only a changed picture: a full frame takes 25-100 ms on I2C.
     uint8_t *buffer = u8g2_->getBufferPtr();
-    if (force || memcmp(buffer, shown_, sizeof(shown_)) != 0) {
+    if (force || title_ != shownTitle_ ||
+        memcmp(buffer + TITLE_BYTES, shown_ + TITLE_BYTES, sizeof(shown_) - TITLE_BYTES) != 0 ||
+        (!scrolling_ && memcmp(buffer, shown_, TITLE_BYTES) != 0)) {
         memcpy(shown_, buffer, sizeof(shown_));
+        shownTitle_ = title_;
         wake();
         u8g2_->sendBuffer();
         return;
+    }
+    // Only the scrolling title moved: no wake-up, and only its rows.
+    if (scrolling_ && !asleep_ && memcmp(buffer, shown_, TITLE_BYTES) != 0) {
+        memcpy(shown_, buffer, TITLE_BYTES);
+        u8g2_->updateDisplayArea(0, 0, WIDTH / 8, 2);
     }
     // The same picture for a long time: switch off (OLEDs burn in).
     if (!asleep_ && sleepMinutes_ > 0 && millis() - changedAt_ > (uint32_t)sleepMinutes_ * 60000) {
@@ -238,8 +252,10 @@ void Display::footer() {
 }
 
 // One line in the top 16 rows (yellow on two-color OLEDs), in the largest
-// font it fits.
+// font it fits; scrolling when it fits none.
 void Display::title(const String &text) {
+    if (text != title_) scrollStart_ = millis();
+    title_ = text;
     for (const uint8_t *font : {LARGE, TITLE_SMALLER, MEDIUM}) {
         u8g2_->setFont(font);
         if (u8g2_->getUTF8Width(text.c_str()) <= WIDTH) {
@@ -247,9 +263,16 @@ void Display::title(const String &text) {
             return;
         }
     }
-    String shown = text;
-    while (shown.length() > 1 && u8g2_->getUTF8Width(shown.c_str()) > WIDTH) shown.remove(shown.length() - 1);
-    u8g2_->drawUTF8(0, 12, shown.c_str());
+    scrolling_ = true;
+    int span = u8g2_->getUTF8Width(text.c_str()) + SCROLL_GAP;
+    uint32_t frames = span / SCROLL_STEP;
+    uint32_t t = (millis() - scrollStart_) % (SCROLL_PAUSE + frames * SCROLL_FRAME);
+    int offset = t < SCROLL_PAUSE ? 0 : (t - SCROLL_PAUSE) / SCROLL_FRAME * SCROLL_STEP;
+    // Clipped to the title rows, so nothing lands on the line below.
+    u8g2_->setClipWindow(0, 0, WIDTH - 1, 15);
+    u8g2_->drawUTF8(-offset, 12, text.c_str());
+    u8g2_->drawUTF8(span - offset, 12, text.c_str());
+    u8g2_->setMaxClipWindow();
 }
 
 int Display::wrap(const String &text, int y, int maxLines) {

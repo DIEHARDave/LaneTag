@@ -133,6 +133,10 @@ constexpr uint32_t SCAN_SHOWN = 5 * 60 * 1000;
 constexpr uint32_t DRAW_INTERVAL = 200;
 constexpr uint32_t TOUCH_REPEAT = 250;
 constexpr uint8_t BRIGHTNESS = 200;
+// A filament name too long for its line scrolls: still for a moment, then
+// one pixel per step, round with a gap.
+constexpr uint32_t SCROLL_PAUSE = 2000, SCROLL_STEP = 40;
+constexpr int SCROLL_GAP = 40;
 
 // Raw XPT2046 readings at the screen's edges (landscape, rotation 1): X from
 // the controller's Y channel, Y from its X channel.
@@ -229,6 +233,46 @@ void Tft::loop() {
     }
     touchDown_ = down;
     if (millis() - lastDraw_ >= DRAW_INTERVAL) draw(false);
+    if (scrolling_ && !asleep_ && millis() - lastScroll_ >= SCROLL_STEP) drawScroll();
+}
+
+// Scroll text that does not fit width (in the current font) at x, y.
+// False when there is no memory for it (then it is cut instead).
+bool Tft::startScroll(const String &text, int x, int y, int width) {
+    if (!sprite_) {
+        sprite_ = new LGFX_Sprite(lcd_);
+        sprite_->setColorDepth(16);
+    }
+    const lgfx::IFont *font = lcd_->getFont();
+    int height = lcd_->fontHeight();
+    if (sprite_->width() != width || sprite_->height() != height) {
+        sprite_->deleteSprite();
+        if (!sprite_->createSprite(width, height)) return false;
+    }
+    sprite_->setFont(font);
+    sprite_->setTextColor(TEXT, BG);
+    sprite_->setTextDatum(textdatum_t::top_left);
+    // The same name again (a redraw for something else): carry on.
+    if (text != scrollText_) {
+        scrollText_ = text;
+        scrollStart_ = millis();
+    }
+    scrollX_ = x;
+    scrollY_ = y;
+    scrolling_ = true;
+    drawScroll();
+    return true;
+}
+
+void Tft::drawScroll() {
+    lastScroll_ = millis();
+    int span = sprite_->textWidth(scrollText_.c_str()) + SCROLL_GAP;
+    uint32_t t = (millis() - scrollStart_) % (SCROLL_PAUSE + span * SCROLL_STEP);
+    int offset = t < SCROLL_PAUSE ? 0 : (t - SCROLL_PAUSE) / SCROLL_STEP;
+    sprite_->fillScreen(BG);
+    sprite_->drawString(scrollText_.c_str(), -offset, 0);
+    sprite_->drawString(scrollText_.c_str(), span - offset, 0);
+    sprite_->pushSprite(scrollX_, scrollY_);
 }
 
 void Tft::touched(int x, int y) {
@@ -302,6 +346,7 @@ void Tft::draw(bool force) {
     }
     shown_ = now;
     wake();
+    scrolling_ = false;     // drawScan starts it again for a long name
     lcd_->startWrite();
     lcd_->fillScreen(BG);
     switch (screen) {
@@ -484,7 +529,8 @@ void Tft::drawScan() {
     }
     lcd.setTextColor(TEXT, BG);
     lcd.setFont(lcd.textWidth(name.c_str()) <= tw - spoolWidth ? TITLE : BODY_BOLD);
-    lcd.drawString(fit(lcd, name, tw - spoolWidth).c_str(), tx, sy + 2);
+    if (lcd.textWidth(name.c_str()) <= tw - spoolWidth || !startScroll(name, tx, sy + 2, tw - spoolWidth))
+        lcd.drawString(fit(lcd, name, tw - spoolWidth).c_str(), tx, sy + 2);
     lcd.setFont(BODY);
     lcd.setTextColor(MUTED, BG);
     if (brand.length()) lcd.drawString(fit(lcd, brand, tw).c_str(), tx, brandY);

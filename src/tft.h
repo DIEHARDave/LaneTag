@@ -13,6 +13,12 @@
 
 #include "display.h"
 
+namespace lgfx {
+inline namespace v1 {
+class LGFX_Sprite;
+}
+}  // namespace lgfx
+
 class Tft {
 public:
     void begin(const DisplayConfig &config);
@@ -40,8 +46,15 @@ private:
     void touched(int x, int y);
     bool readTouch(int &x, int &y);
     int slotWidth() const { return w_ / 5; }    // Ask, 1-4
+    bool startScroll(const String &text, int x, int y, int width);
+    void drawScroll();
 
     class CydLcd *lcd_ = nullptr;
+    lgfx::LGFX_Sprite *sprite_ = nullptr;       // the scrolling name, drawn off screen
+    String scrollText_;
+    bool scrolling_ = false;
+    int scrollX_ = 0, scrollY_ = 0;
+    uint32_t scrollStart_ = 0, lastScroll_ = 0;
     String shown_;
     int w_ = 320, h_ = 240;
     int header_ = 40, footer_ = 192;            // footer: top of the slot buttons

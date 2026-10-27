@@ -64,6 +64,9 @@ private:
     class Tft *tft_ = nullptr;
     String error_;
     uint8_t shown_[1024];
+    String title_, shownTitle_;     // the title drawn now, and when last really changed
+    bool scrolling_ = false;        // the title is too long and scrolls
+    uint32_t scrollStart_ = 0;
     bool asleep_ = false;
     uint32_t changedAt_ = 0, lastDraw_ = 0, slotUntil_ = 0;
     int sleepMinutes_ = 0;
