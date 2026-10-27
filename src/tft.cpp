@@ -446,6 +446,17 @@ void Tft::drawScan() {
         brand = tagKindName(last.tag.kind);
     }
     if (!name.length()) name = last.printerTitle;
+    if (last.printerSpool && last.printerTitle.length()) {
+        // The printer found the spool (in Spoolman): its name, not the tag's,
+        // with the vendor it starts with on the brand line.
+        name = last.printerTitle;
+        brand = "";
+        int n = f.brand.length();
+        if (n && name.length() > (unsigned)n + 1 && name[n] == ' ' && name.substring(0, n).equalsIgnoreCase(f.brand)) {
+            brand = name.substring(0, n);
+            name = name.substring(n + 1);
+        }
+    }
 
     // Color swatch.
     const int sx = 10, sy = header_ + (compact_ ? 6 : 10), ss = compact_ ? 64 : 76;
