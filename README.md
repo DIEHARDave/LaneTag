@@ -551,6 +551,8 @@ its pins, whether SDA or SCL is held low, or that nothing answers at all
 
 ### A 16x2 character LCD
 
+![A 1602 I2C LCD on an ESP32-C3 SuperMini after a scan of a PLA Strawberry spool: the filament name and the zmod_nfc status scroll along the two rows](docs/lcd1602-display.jpg)
+
 The common "1602 I2C" LCD (an HD44780 with a PCF8574 backpack) works too:
 choose **LCD 1602** under **Settings > Display**, its SDA and SCL pins and
 address **0x27** (**0x3F** on backpacks with a PCF8574A). It shows the same
