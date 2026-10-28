@@ -148,7 +148,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
       <div><label for="buttonPin">Slot button pin (-1: none)</label><input id="buttonPin" type="number"></div>
       <div><label for="sleepMinutes">Sleep after minutes unused (0: never)</label><input id="sleepMinutes" type="number" min="0" max="1440"></div>
     </div>
-    <div class="hint">Sleep is for a reader on a battery: after that long without a scan, button press, touch or use of this page, the reader, screen and Wi-Fi switch off and the board draws almost nothing. A press of the slot button wakes it; it is back on the network in a few seconds, then scans as usual. Only some pins can wake the board (C3: GPIO 0-5, so not its BOOT button; C6: 0-7; S3: 0-21; ESP32: 0, 2, 4, 12-15, 25-27, 32-39, and 34-39 need a 10k pull-up to 3.3 V). A PN5180 stays powered while the board sleeps, as do the power LEDs of the reader and board.</div>
+    <div class="hint">Sleep is for a reader on a battery: after that long without a scan, button press, touch or use of this page, the reader, screen and Wi-Fi switch off and the board draws almost nothing. A press of the slot button wakes it; it is back on the network in a few seconds, then scans as usual. Only some pins can wake the board (C3: GPIO 0-5, so not its BOOT button; C6: 0-7; C5: 0-6; S3: 0-21; ESP32: 0, 2, 4, 12-15, 25-27, 32-39, and 34-39 need a 10k pull-up to 3.3 V). A PN5180 stays powered while the board sleeps, as do the power LEDs of the reader and board.</div>
     <div class="actions"><button class="btn primary" id="saveSettings">Save</button></div>
     <div class="msg" id="settingsMsg"></div>
   </div>
@@ -164,7 +164,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
   <div class="card">
     <h2>Display</h2>
     <div class="grid">
-      <div><label for="dispType">Screen</label><select id="dispType"><option value="none">None</option><option value="ssd1306">OLED SSD1306 (0.96", I2C)</option><option value="sh1106">OLED SH1106 (1.3", I2C)</option><option value="lcd1602">LCD 1602 (16x2, I2C backpack)</option><option value="cyd">CYD 2.8" touch (ESP32-2432S028)</option><option value="cyd-st7789">CYD 2.8" touch, ST7789 (two USB ports)</option><option value="c6-lcd147">Waveshare ESP32-C6-LCD-1.47</option></select></div>
+      <div><label for="dispType">Screen</label><select id="dispType"><option value="none">None</option><option value="ssd1306">OLED SSD1306 (0.96", I2C)</option><option value="sh1106">OLED SH1106 (1.3", I2C)</option><option value="lcd1602">LCD 1602 (16x2, I2C backpack)</option><option value="cyd">CYD 2.8" touch (ESP32-2432S028)</option><option value="cyd-st7789">CYD 2.8" touch, ST7789 (two USB ports)</option><option value="c6-lcd147">Waveshare ESP32-C6/C5-LCD-1.47</option></select></div>
       <div class="disp oled"><label for="dispSda">SDA pin</label><input id="dispSda" type="number"></div>
       <div class="disp oled"><label for="dispScl">SCL pin</label><input id="dispScl" type="number"></div>
       <div class="disp oled"><label for="dispAddr">Address</label><select id="dispAddr"><option value="60">0x3C</option><option value="61">0x3D</option><option value="39">0x27</option><option value="63">0x3F</option></select></div>

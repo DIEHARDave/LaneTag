@@ -36,7 +36,7 @@ printers and their IP addresses, and how each printer is reached.
 > fixed to one slot), and to an **AD5X's stock screen** through the stock
 > API, and to an unmodified
 > **Creator 5 Pro on stock firmware**. The firmware
-> builds for ESP32, ESP32-S3, ESP32-C3 and ESP32-C6 without warnings. Its decoders and
+> builds for ESP32, ESP32-S3, ESP32-C3, ESP32-C6 and ESP32-C5 without warnings. Its decoders and
 > MIFARE key derivation match [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc)'s
 > (identical results for every tag in zmod_nfc's decoder tests, identical
 > Bambu, Creality and Snapmaker keys). Not yet tried: Bambu and Creality
@@ -83,8 +83,9 @@ Each printer on the reader's list uses one of these methods:
 ## Hardware
 
 * An **ESP32** board: classic ESP32 (DevKit, WROOM-32), ESP32-S3,
-  ESP32-C3 (SuperMini works) or ESP32-C6 (DevKitC / SuperMini; builds and
-  boots, not yet tried with a reader).
+  ESP32-C3 (SuperMini works), ESP32-C6 (DevKitC / SuperMini) or ESP32-C5
+  (Wi-Fi on 2.4 and 5 GHz; the plain C6 and C5 builds boot, but only the
+  Waveshare 1.47" boards below have been tried with a reader).
 * A reader module, one of:
   * a **PN532**, e.g. the common red or blue "PN532 NFC RFID V3" boards or
     Elechouse's (good range, the tested one);
@@ -112,6 +113,9 @@ Each printer on the reader's list uses one of these methods:
   color and has touch buttons for the printer and slot, see
   [The CYD touch screen](#the-cyd-touch-screen). Wiring:
   [CYD](#cyd-esp32-2432s028).
+* Or a **Waveshare ESP32-C6-LCD-1.47** or **ESP32-C5-LCD-1.47**: a small
+  board with a 1.47" color screen, see
+  [The Waveshare ESP32-C6-LCD-1.47 and ESP32-C5-LCD-1.47](#the-waveshare-esp32-c6-lcd-147-and-esp32-c5-lcd-147).
 
 ### Wiring
 
@@ -136,6 +140,7 @@ Default pins (all can be changed on the web page):
 | ESP32-S3 | 8 | 9 | 18 | 17 | none | 0 (BOOT) |
 | ESP32-C3 | 6 | 7 | 20 | 21 | 8 (lit when low) | 9 (BOOT) |
 | ESP32-C6 | 6 | 7 | 17 | 16 | none | 9 (BOOT) |
+| ESP32-C5 | 4 | 5 | 9 | 10 | none | 28 (BOOT) |
 
 ```
 PN532          ESP32 (I2C)          PN532          ESP32 (HSU)
@@ -168,6 +173,7 @@ go to 3V3 instead of a GPIO (set the RST pin to -1).
 | ESP32-S3 | 12 | 13 | 11 | 10 | 14 |
 | ESP32-C3 | 4 | 5 | 6 | 7 | 3 |
 | ESP32-C6 | 21 | 20 | 19 | 18 | 3 |
+| ESP32-C5 | 6 | 8 | 10 | 9 | 3 |
 
 ```
 RC522          ESP32
@@ -198,6 +204,7 @@ GPIO, AUX and REQ stay unconnected.
 | ESP32-S3 | 12 | 13 | 11 | 10 | 15 | 14 |
 | ESP32-C3 | 4 | 5 | 6 | 7 | 10 | 3 |
 | ESP32-C6 | 21 | 20 | 19 | 18 | 2 | 3 |
+| ESP32-C5 | 6 | 8 | 10 | 9 | 1 | 3 |
 
 ```
 PN5180         ESP32
@@ -245,8 +252,10 @@ pio run -e esp32dev -t upload      # classic ESP32
 pio run -e esp32-s3 -t upload      # ESP32-S3
 pio run -e esp32-c3 -t upload      # ESP32-C3
 pio run -e esp32-c6 -t upload      # ESP32-C6
+pio run -e esp32-c5 -t upload      # ESP32-C5
 pio run -e cyd -t upload           # ESP32-2432S028 (CYD)
 pio run -e esp32-c6-lcd -t upload  # Waveshare ESP32-C6-LCD-1.47
+pio run -e esp32-c5-lcd -t upload  # Waveshare ESP32-C5-LCD-1.47
 pio device monitor                 # log output
 ```
 
@@ -262,6 +271,14 @@ use has no ESP32-C6 support; PlatformIO downloads it on the first build.
 The `esp32-c6-lcd` build is the same with the Waveshare ESP32-C6-LCD-1.47's
 screen, PN532 (HSU) and RGB LED as defaults; the tested board did not start
 the firmware after a USB upload until it was unplugged and plugged back in.
+
+The `esp32-c5` and `esp32-c5-lcd` builds use a newer pioarduino release
+(Arduino core 3.3, the first with the ESP32-C5), and `esp32-c5-lcd` a newer
+LovyanGFX than the other screen builds. On Windows, build them from
+PowerShell or cmd: the platform's tool installer refuses to run under Git
+Bash (MSYS). The platform decides whether it is online by connecting to
+1.1.1.1 port 53; where that is blocked it skips installing its Python tools
+and the build stops with a "file not found" error.
 
 Later updates can be uploaded from the web page (**Settings > Firmware**,
 the file is `.pio/build/<board>/firmware.bin`).
@@ -280,9 +297,14 @@ the file is `.pio/build/<board>/firmware.bin`).
    when the reader loses your network for a minute while running.
 3. Open the reader at **`http://lanetag-xxxx.local`** (the name is on the
    Settings tab) or its IP address from your router.
+
+   ![The Settings tab: Wi-Fi and device name, the NFC reader's connection and pins, LED, slot button and sleep, Spoolman tag scanning, the screen, and firmware updates](docs/webui-settings.png)
 4. Under **Printers**, click **Find printers**, or add each printer by
    hand: name, IP address, the printer model, and the method. **Test**
    checks the connection.
+
+   ![The Printers tab with two AD5Xs on Zmod + zmod_nfc (one fixed to slot 4, one asking on the printer's screen), a Snapmaker U1 on Extended firmware, a FLSun T1 on Moonraker lane data and a Spoolman server](docs/webui-printers.png)
+
    * **Find printers** searches the reader's network (its /24) for about
      45 seconds. Printers appear as they are found, each with an **Add**
      button that fills in a new printer with the model and method it found.
@@ -370,6 +392,8 @@ readers are called `lanetag-xxxx`, and their setup network uses the
 password `lanetag1`.
 
 ## Using it
+
+![The Scan tab after a Creality PLA Strawberry Milk spool (an OpenSpool tag) went into slot 4 of an AD5X as Spoolman spool 76, with the AD5X's four slots below](docs/webui-scan.png)
 
 The **Scan** tab shows the last tag: its color, what it decoded to and what
 the printer did, plus the target printer's slots. After a whole read the
@@ -488,7 +512,8 @@ sleep while the setup access point is up or a scan waits for its slot.
 
 Only some pins can wake the board, so sleep needs the slot button on one of
 them: GPIO 0-5 on the C3 (not its BOOT button, GPIO 9; GPIO 1 works), GPIO
-0-7 on the C6 (not BOOT either), GPIO 0-21 on the S3, and GPIO 0, 2, 4,
+0-7 on the C6 (not BOOT either), GPIO 0-6 on the C5 (not BOOT, GPIO 28),
+GPIO 0-21 on the S3, and GPIO 0, 2, 4,
 12-15, 25-27 or 32-39 on the ESP32 (BOOT, GPIO 0, works; 34-39 need a 10k
 pull-up to 3.3 V). A PN5180 has no power-down here and stays on, as do
 the power LEDs of the reader and board.
@@ -596,9 +621,15 @@ shows:
 The backlight turns off after **Screen off after** minutes without a
 change; a touch wakes it (that touch does nothing else).
 
-### The Waveshare ESP32-C6-LCD-1.47
+### The Waveshare ESP32-C6-LCD-1.47 and ESP32-C5-LCD-1.47
 
-The `esp32-c6-lcd` build shows the same screens on this board's 1.47"
+![The reader on a Waveshare ESP32-C5-LCD-1.47 with a PN532 in HSU mode, ready, with scans going straight into slot 4 of an AD5X](docs/lcd147-ready.jpg)
+
+![The same board after a Creality PLA Strawberry Milk spool went into slot 4 of an AD5X as Spoolman spool 76](docs/lcd147-scan.jpg)
+
+The two boards look the same and show the same screens (the photos are of
+the C5 one). The `esp32-c6-lcd` and `esp32-c5-lcd` builds show them on the
+board's 1.47"
 172x320 screen, turned sideways and without touch: the printer and the
 fixed slot are changed with the BOOT button or on the web page, and a scan
 waiting for its slot is put into one on the printer or the web page. The
@@ -606,6 +637,11 @@ screen uses GPIO 6, 7, 14, 15, 21 and 22 and the C6's only SPI bus, so the
 reader is a PN532: in HSU mode, PN532 TXD to GPIO 17 (RX on the header),
 RXD to GPIO 16 (TX), or over I2C on GPIO 19 (SDA) and 20 (SCL). The RGB LED
 (a WS2812 on GPIO 8) shows the scan colors.
+
+On the **ESP32-C5-LCD-1.47** the screen uses GPIO 6, 7, 10, 23, 24 and 26.
+The PN532 goes on the header's RXD and TXD pins: PN532 TXD to **RXD**
+(GPIO 12), RXD to **TXD** (GPIO 11), VCC to 3V3 and GND to GND, or over I2C
+on GPIO 2 (SDA) and 3 (SCL). The WS2812 is on GPIO 8 here too.
 
 ## Tag formats
 

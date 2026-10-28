@@ -10,7 +10,14 @@
 
 // The CYD's screen: HSPI, backlight on GPIO 21. The Waveshare
 // ESP32-C6-LCD-1.47's: a 172x320 ST7789 (in the middle of its 240 columns)
-// on the C6's one SPI bus, backlight on GPIO 22.
+// on the C6's one SPI bus, backlight on GPIO 22; the ESP32-C5-LCD-1.47 has
+// the same panel on other pins.
+#if CONFIG_IDF_TARGET_ESP32C5
+constexpr int LCD147_SCLK = 7, LCD147_MOSI = 6, LCD147_DC = 24, LCD147_CS = 23, LCD147_RST = 26, LCD147_BL = 10;
+#else
+constexpr int LCD147_SCLK = 7, LCD147_MOSI = 6, LCD147_DC = 15, LCD147_CS = 14, LCD147_RST = 21, LCD147_BL = 22;
+#endif
+
 class CydLcd : public lgfx::LGFX_Device {
 public:
     explicit CydLcd(DisplayType type) {
@@ -29,17 +36,17 @@ public:
             c.spi_3wire = false;
             c.use_lock = true;
             c.dma_channel = SPI_DMA_CH_AUTO;
-            c.pin_sclk = c6 ? 7 : 14;
-            c.pin_mosi = c6 ? 6 : 13;
+            c.pin_sclk = c6 ? LCD147_SCLK : 14;
+            c.pin_mosi = c6 ? LCD147_MOSI : 13;
             c.pin_miso = c6 ? -1 : 12;
-            c.pin_dc = c6 ? 15 : 2;
+            c.pin_dc = c6 ? LCD147_DC : 2;
             bus_.config(c);
             panel->setBus(&bus_);
         }
         {
             auto c = panel->config();
-            c.pin_cs = c6 ? 14 : 15;
-            c.pin_rst = c6 ? 21 : -1;
+            c.pin_cs = c6 ? LCD147_CS : 15;
+            c.pin_rst = c6 ? LCD147_RST : -1;
             c.pin_busy = -1;
             c.panel_width = c6 ? 172 : 240;
             c.panel_height = 320;
@@ -54,10 +61,10 @@ public:
         }
         {
             auto c = light_.config();
-            c.pin_bl = c6 ? 22 : 21;
+            c.pin_bl = c6 ? LCD147_BL : 21;
             c.invert = false;
             c.freq = 12000;
-            c.pwm_channel = c6 ? 0 : 7;     // the C6 has six channels
+            c.pwm_channel = c6 ? 0 : 7;     // the C6 and C5 have six channels
             light_.config(c);
             panel->setLight(&light_);
         }

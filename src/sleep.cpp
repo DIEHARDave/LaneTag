@@ -15,6 +15,8 @@ const char *wakePins() {
     return "GPIO 0-5";
 #elif CONFIG_IDF_TARGET_ESP32C6
     return "GPIO 0-7";
+#elif CONFIG_IDF_TARGET_ESP32C5
+    return "GPIO 0-6";
 #elif CONFIG_IDF_TARGET_ESP32S3
     return "GPIO 0-21";
 #else

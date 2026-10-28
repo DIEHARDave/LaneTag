@@ -14,7 +14,18 @@ const char *const NVS_KEY = "config";
 
 // Default pins per chip; all can be changed on the web page. The default
 // button is the board's BOOT button.
-#if defined(BOARD_C6_LCD147)
+#if defined(BOARD_LCD147) && CONFIG_IDF_TARGET_ESP32C5
+// Waveshare ESP32-C5-LCD-1.47: the screen takes 6, 7, 10, 23, 24 and 26 (and
+// the SPI bus, so the reader is a PN532), the SD slot 4 and 5. The PN532
+// goes on the header's TX/RX in HSU mode; the RGB LED is a WS2812 on 8.
+constexpr int DEFAULT_SDA = 2, DEFAULT_SCL = 3, DEFAULT_RX = 12, DEFAULT_TX = 11;
+constexpr int DEFAULT_SCK = -1, DEFAULT_MISO = -1, DEFAULT_MOSI = -1, DEFAULT_SS = -1, DEFAULT_RST = -1;
+constexpr int DEFAULT_BUSY = -1;
+constexpr int DEFAULT_LED = 8;
+constexpr bool DEFAULT_LED_LOW = false;
+constexpr int DEFAULT_BUTTON = 28;
+const int SCREEN_PINS[] = {6, 7, 10, 23, 24, 26};
+#elif defined(BOARD_LCD147)
 // Waveshare ESP32-C6-LCD-1.47: the screen takes 6, 7, 14, 15, 21 and 22 (and
 // the SPI bus, so the reader is a PN532), the SD slot 4 and 5. The PN532
 // goes on the header's TX/RX in HSU mode; the RGB LED is a WS2812 on 8.
@@ -25,6 +36,8 @@ constexpr int DEFAULT_LED = 8;
 constexpr bool DEFAULT_LED_LOW = false;
 constexpr int DEFAULT_BUTTON = 9;
 const int SCREEN_PINS[] = {6, 7, 14, 15, 21, 22};
+#endif
+#if defined(BOARD_LCD147)
 const char *const READER_PIN_KEYS[] = {"sda", "scl", "rx", "tx", "sck", "miso", "mosi", "ss", "rst", "busy"};
 
 bool isScreenPin(int pin) {
@@ -56,6 +69,15 @@ constexpr int DEFAULT_BUSY = 2;
 constexpr int DEFAULT_LED = -1;
 constexpr bool DEFAULT_LED_LOW = false;
 constexpr int DEFAULT_BUTTON = 9;
+#elif CONFIG_IDF_TARGET_ESP32C5
+// GPIO 2, 7 and 25-28 are strapping pins, 13/14 are USB and 16-22 the
+// flash; BOOT is GPIO 28. The LED differs between boards, so none by default.
+constexpr int DEFAULT_SDA = 4, DEFAULT_SCL = 5, DEFAULT_RX = 9, DEFAULT_TX = 10;
+constexpr int DEFAULT_SCK = 6, DEFAULT_MISO = 8, DEFAULT_MOSI = 10, DEFAULT_SS = 9, DEFAULT_RST = 3;
+constexpr int DEFAULT_BUSY = 1;
+constexpr int DEFAULT_LED = -1;
+constexpr bool DEFAULT_LED_LOW = false;
+constexpr int DEFAULT_BUTTON = 28;
 #elif defined(BOARD_CYD)
 // ESP32-2432S028: a PN532 goes on CN1 (GPIO 22, 27, 3.3 V, GND). The screen
 // and touch take most other pins; the SPI defaults are the SD card slot's.
@@ -99,7 +121,7 @@ void setDefaults(Config &config) {
     // An OLED most likely shares the reader's I2C pins.
     config.display.sda = DEFAULT_SDA;
     config.display.scl = DEFAULT_SCL;
-#ifdef BOARD_C6_LCD147
+#ifdef BOARD_LCD147
     config.reader.bus = Pn532Bus::UART;
     config.display.type = DisplayType::C6Lcd147;
     config.led.type = LedType::Ws2812;
@@ -303,7 +325,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
             return next.reader.chip == ReaderChip::RC522 ? "the RC522 needs its SCK, MISO, MOSI and SDA (SS) pins"
                                                          : "the PN5180 needs its SCK, MISO, MOSI and NSS pins";
         if (next.reader.chip == ReaderChip::PN5180 && next.reader.busy < 0) return "the PN5180 needs its BUSY pin";
-#ifdef BOARD_C6_LCD147
+#ifdef BOARD_LCD147
         if (spi) return "the screen has this board's SPI bus; use a PN532 (HSU or I2C)";
         for (int p : {next.reader.sda, next.reader.scl, next.reader.rx, next.reader.tx})
             if (isScreenPin(p)) return "GPIO " + String(p) + " is the screen's on this board";
@@ -339,12 +361,12 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
                                                    : DisplayType::None;
 #ifndef HAS_TFT
         if (isTft(next.display.type)) return "this firmware has no touch screen support (use the esp32dev build)";
-#elif defined(BOARD_C6_LCD147)
+#elif defined(BOARD_LCD147)
         if (isTft(next.display.type) && next.display.type != DisplayType::C6Lcd147)
             return "this firmware drives only the board's own 1.47\" screen";
 #else
         if (next.display.type == DisplayType::C6Lcd147)
-            return "the 1.47\" screen needs the esp32-c6-lcd build";
+            return "the 1.47\" screen needs the esp32-c6-lcd or esp32-c5-lcd build";
 #endif
         next.display.sda = pin(display["sda"], next.display.sda);
         next.display.scl = pin(display["scl"], next.display.scl);
@@ -551,10 +573,10 @@ void loadConfig(Config &config) {
         log_w("stored settings are not valid JSON; using defaults");
         return;
     }
-#ifdef BOARD_C6_LCD147
-    // Saved by the plain ESP32-C6 firmware, whose reader pins are this
-    // board's screen pins (I2C there crashes the I2C driver): back to the
-    // defaults for those.
+#ifdef BOARD_LCD147
+    // Saved by the plain ESP32-C6 or C5 firmware, whose reader pins can be
+    // this board's screen pins (I2C there crashes the I2C driver): back to
+    // the defaults for those.
     for (const char *key : READER_PIN_KEYS)
         if (isScreenPin(doc["reader"][key] | -1)) doc["reader"].remove(key);
 #endif
