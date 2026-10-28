@@ -16,6 +16,8 @@ public:
     void row(int row, const String &text);
     // Display and backlight on or off.
     void power(bool on);
+    // Writes the backpack did not acknowledge (wiring, pull-ups).
+    uint32_t errors() const { return errors_; }
 
     // UTF-8 to the LCD's ROM (A00): ASCII as it is, a degree sign as 0xDF,
     // anything else as '?'.
@@ -29,4 +31,5 @@ private:
     TwoWire *bus_ = nullptr;
     uint8_t address_ = 0x27;
     uint8_t backlight_ = 0x08;
+    uint32_t errors_ = 0;
 };

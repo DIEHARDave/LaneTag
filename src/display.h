@@ -47,7 +47,7 @@ public:
     void off();
 
     bool enabled() const { return u8g2_ != nullptr || tft_ != nullptr || lcd_ != nullptr; }
-    String error() const { return error_; }
+    String error() const;
 
 private:
     void draw(bool force);

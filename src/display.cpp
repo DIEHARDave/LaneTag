@@ -186,6 +186,12 @@ void Display::begin(const DisplayConfig &config, const ReaderPins &reader) {
     draw(true);
 }
 
+String Display::error() const {
+    if (lcd_ && lcd_->errors())
+        return "the LCD missed " + String(lcd_->errors()) + " writes: check its SDA/SCL wiring and pull-ups";
+    return error_;
+}
+
 void Display::refresh() {
 #ifdef HAS_TFT
     if (tft_) return tft_->refresh();

@@ -46,15 +46,17 @@ void Lcd1602::send(uint8_t value, uint8_t mode) {
     nibble((value << 4) | mode);
 }
 
-// One nibble with an EN pulse. The PCF8574 is a 100 kHz part: each byte
-// takes ~90 us there, longer than the pulse and most commands need.
+// One nibble with an EN pulse: RS and data first, then EN up and down.
+// The PCF8574 is a 100 kHz part: each byte takes ~90 us there, longer
+// than the setup times, the pulse and most commands need.
 void Lcd1602::nibble(uint8_t bits) {
     bits |= backlight_;
     bus_->beginTransmission(address_);
+    bus_->write(bits);
     bus_->write(bits | EN);
     bus_->write(bits);
-    bus_->endTransmission();
-    delayMicroseconds(40);
+    if (bus_->endTransmission() != 0) errors_++;
+    delayMicroseconds(50);
 }
 
 String Lcd1602::toLcd(const String &utf8) {
