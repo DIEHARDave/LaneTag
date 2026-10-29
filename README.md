@@ -250,6 +250,25 @@ and an ST7789 panel.
 
 ## Install
 
+### From a release
+
+Each [release](https://github.com/DIEHARDave/LaneTag/releases) has two files
+per board, named after the PlatformIO builds below:
+
+* `lanetag-<version>-<board>-factory.bin`: the whole flash image for a new
+  board. Flash it at **0x0** over USB, with
+  `esptool --chip <chip> write_flash 0x0 lanetag-...-factory.bin` or the browser
+  flasher [esptool-js](https://espressif.github.io/esptool-js/).
+  It erases the reader's settings.
+* `lanetag-<version>-<board>.bin`: an update for a reader that already runs
+  LaneTag. Upload it under **Settings > Firmware**; settings are kept.
+
+The web page shows the running version and board under **Settings >
+Firmware**, and says when a newer release is out (your browser asks GitHub;
+the reader doesn't need internet access for that).
+
+### Building it yourself
+
 Build and flash with [PlatformIO](https://platformio.org/) (the VS Code
 extension, or `pip install platformio`):
 
@@ -287,7 +306,16 @@ Bash (MSYS). The platform decides whether it is online by connecting to
 and the build stops with a "file not found" error.
 
 Later updates can be uploaded from the web page (**Settings > Firmware**,
-the file is `.pio/build/<board>/firmware.bin`).
+the file is `.pio/build/<board>/firmware.bin`). A build's version is
+`git describe` (`v0.2.0`, or `v0.2.0-3-gb86244a` three commits later,
+`-dirty` with uncommitted changes).
+
+### Making a release
+
+Push a tag such as `v0.2.1`: the Release workflow builds every board with
+`tools/release.py` and attaches the files above to a GitHub release of that
+name. `python tools/release.py [board ...]` writes the same files into
+`dist/` locally (needs `pip install esptool`).
 
 ## Setup
 

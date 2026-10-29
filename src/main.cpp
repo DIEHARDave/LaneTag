@@ -38,6 +38,7 @@
 #include "decoders.h"
 #include "sleep.h"
 #include "spoolman.h"
+#include "version.h"
 
 App app;
 

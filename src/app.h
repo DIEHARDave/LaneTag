@@ -7,8 +7,6 @@
 #include "printers.h"
 #include "reader.h"
 
-#define FIRMWARE_VERSION "0.1.0"
-
 struct ScanRecord {
     uint32_t id = 0;            // counts scans; 0: none yet
     uint32_t at = 0;            // millis() of the read

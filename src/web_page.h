@@ -26,6 +26,7 @@ section{display:none}section.on{display:block}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-top:12px}
 .card h2{font-size:15px;margin:0 0 10px}
 .banner{background:var(--chip);border-left:4px solid var(--warn);padding:10px 12px;border-radius:6px;margin-top:12px}
+a{color:var(--accent)}
 .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .swatch{width:56px;height:56px;border-radius:10px;border:1px solid var(--line);flex:none;background:repeating-linear-gradient(45deg,var(--chip) 0 6px,transparent 6px 12px)}
 .title{font-size:18px;font-weight:600}
@@ -178,7 +179,9 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
   <div class="card">
     <h2>Firmware</h2>
     <div class="muted" id="version"></div>
-    <label for="fw">Firmware file (.pio/build/&lt;board&gt;/firmware.bin)</label>
+    <div class="muted"><span id="releaseLine"></span> · <a href="#" id="recheck">Check again</a></div>
+    <div class="banner hidden" id="newRelease"></div>
+    <label for="fw">Firmware file (lanetag-&lt;version&gt;-<span id="fwBoard">&lt;board&gt;</span>.bin from the <a href="https://github.com/DIEHARDave/LaneTag/releases" target="_blank" rel="noopener">releases</a>, not the -factory one; or .pio/build/&lt;board&gt;/firmware.bin)</label>
     <input id="fw" type="file" accept=".bin">
     <div class="actions"><button class="btn" id="upload">Upload</button><button class="btn danger" id="restart">Restart</button></div>
     <div class="msg" id="fwMsg"></div>
@@ -242,8 +245,43 @@ function renderHeader() {
   ap.classList.toggle("hidden", !status.ap);
   if (status.ap) ap.textContent = `Setup mode: this device is the "${status.ap_name}" Wi-Fi network (password lanetag1). Enter your Wi-Fi network under Settings.` +
     (status.wifi_error ? ` Could not join ${status.ssid}: ${status.wifi_error}.` : "");
-  $("version").textContent = "Version " + status.version;
+  $("version").textContent = `Version ${status.version} · ${status.board} build`;
+  $("fwBoard").textContent = status.board;
+  checkRelease();
 }
+
+// The newest release on GitHub, asked by the browser (the reader itself
+// needn't reach the internet). Once per page load, and on "Check again".
+let releaseChecked = false;
+async function checkRelease(again) {
+  if (releaseChecked && !again) return;
+  releaseChecked = true;
+  const line = $("releaseLine"), b = $("newRelease");
+  const parse = v => (/^v?(\d+)\.(\d+)\.(\d+)/.exec(v || "") || []).slice(1).map(Number);
+  line.textContent = "Checking GitHub for releases…";
+  b.classList.add("hidden");
+  let rel;
+  try {
+    const r = await fetch("https://api.github.com/repos/DIEHARDave/LaneTag/releases/latest");
+    if (r.status === 404) { line.textContent = "No releases on GitHub yet"; return; }
+    rel = await r.json();
+  } catch (e) {
+    line.textContent = "Couldn't reach GitHub to check for releases";
+    return;
+  }
+  const latest = parse(rel.tag_name), mine = parse(status.version);
+  if (latest.length !== 3) { line.textContent = "Couldn't read the latest release from GitHub"; return; }
+  const link = `<a href="${esc(rel.html_url)}" target="_blank" rel="noopener">${esc(rel.tag_name)}</a>`;
+  if (mine.length !== 3) { line.innerHTML = `Latest release: ${link} (this is a development build, not compared)`; return; }
+  const i = latest.findIndex((n, k) => n !== mine[k]);
+  if (i < 0 || latest[i] < mine[i]) { line.innerHTML = `Latest release: ${link} · up to date`; return; }
+  line.innerHTML = `Latest release: ${link}`;
+  const asset = (rel.assets || []).find(a => a.name.endsWith(`-${status.board}.bin`));
+  b.innerHTML = `Update available: ${link}` +
+    (asset ? ` · <a href="${esc(asset.browser_download_url)}">download ${esc(asset.name)}</a>, then upload it below` : "");
+  b.classList.remove("hidden");
+}
+$("recheck").onclick = e => { e.preventDefault(); checkRelease(true); };
 
 function renderTarget() {
   const sel = $("target");

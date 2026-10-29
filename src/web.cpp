@@ -7,6 +7,7 @@
 #include "app.h"
 #include "decoders.h"
 #include "discovery.h"
+#include "version.h"
 #include "web_page.h"
 
 namespace {
@@ -82,6 +83,7 @@ void handleStatus() {
     JsonDocument doc;
     doc["device"] = app.config.hostname;
     doc["version"] = FIRMWARE_VERSION;
+    doc["board"] = FIRMWARE_BOARD;
     doc["ap"] = app.apMode;
     if (app.apMode) doc["ap_name"] = app.apName;
     if (app.wifiError.length()) doc["wifi_error"] = app.wifiError;
