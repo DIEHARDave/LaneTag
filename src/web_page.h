@@ -570,6 +570,7 @@ $("savePrinters").onclick = async () => {
     if (p.check_code) o.check_code = p.check_code;
     if (p.api_key) o.api_key = p.api_key;
     if (p.model === "spoolman") { o.create = p.create !== false; o.location = p.location || ""; }
+    if (p.method === "afc") o.next_lane = !!p.next_lane;
     return o;
   })});
   setStatus($("printersMsg"), r.ok ? "Saved" : r.error, r.ok);
