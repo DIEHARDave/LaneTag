@@ -70,6 +70,12 @@ Each printer on the reader's list uses one of these methods:
 | **Spoolman (no printer)**<br><br>Spoolman API | A [Spoolman](https://github.com/Donkie/Spoolman) server (port 7912) | No printer: the reader is a **Spoolman station** (by the shelf, the dryer, the scale). The spool is the one whose ID is on the tag, else the one with the tag's UID in its **Card UIDs** field (or nfc2klipper's `nfc_id`), else the only spool with the tag's brand, material and color, and the tag's UID is then added to its Card UIDs. With **Add them as new spools** (the default), a tag with filament data that matches nothing becomes a new spool (vendor and filament reused when Spoolman has them, "Card UIDs" field created if missing). An optional **location** is set on every scanned spool. The reply names the spool and its remaining weight. These are the UIDs FF_NFC, zmod_afclite and the U1's SpoolLink match, so spools bound here are found by those printers too. |
 | **Klipper**<br><br>Moonraker lane data | Any Klipper printer with Moonraker | The tool's entry in Moonraker's **lane_data** (read by OrcaSlicer's filament sync) gets the material, color, vendor, temperatures and Spoolman spool ID. On a printer with a **single lane**, a tag naming a Spoolman spool also makes it Moonraker's **active spool** (with Spoolman set up in Moonraker). Each reader covers up to four lanes (T0-T3, T4-T7, ...): one per extruder Klipper has, or as many as the printer's lane_data already lists when that is more (an AD5X's IFS feeds four lanes into one extruder). So a plain single-extruder printer only ever offers **T0**. Also works on Zmod printers (Creator 5, AD5X), next to their own methods. |
 
+For the three Klipper methods, a tag **names a Spoolman spool** when the spool
+ID is written on it, or when its UID is linked to a spool in the Spoolman that
+Moonraker uses (Spoolman 0.27's own tag links, or the spool's **Card UIDs** /
+`nfc_id` field). So tags you only linked in Spoolman, without writing to them,
+work too.
+
 > **Stock firmware and Zmod basic: give each printer a fixed slot.** Only
 > FF_NFC can show a "which slot?" popup on the printer's screen. With the
 > other two methods the printer cannot ask, so set **Slot for this reader**

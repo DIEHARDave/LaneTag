@@ -258,6 +258,10 @@ void App::handleTag(const Tag &tag) {
         feedback.play(Signal::Failure);
         return;
     }
+    // A tag linked to its spool in Spoolman names no spool itself; the
+    // Klipper methods ask the printer's Spoolman for it.
+    String unlinked;
+    if (!last.filament.spoolId) last.filament.spoolId = linkedSpool(*printer, tag, unlinked);
     String noNextLane;
     if (printer->method == Method::Afc && printer->nextLane) {
         sending();
@@ -266,11 +270,12 @@ void App::handleTag(const Tag &tag) {
             record(reply);
             return;
         }
-        noNextLane = " (not the next lane loaded: " + reply.message + ")";
+        noNextLane = " (not the next lane loaded: " + reply.message + (unlinked.length() ? "; " + unlinked : "") + ")";
     }
     if (printer->slot > 0) {
         sending();
         PrinterReply reply = assignSlot(*printer, tag, last.filament, printer->slot, readerName());
+        if (!reply.ok && unlinked.length() && !noNextLane.length()) reply.message += " (" + unlinked + ")";
         reply.message += noNextLane;
         record(reply);
         return;

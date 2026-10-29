@@ -30,5 +30,8 @@ String spoolmanBase(String address);
 // recent readers, and a browser following it opens the spool.
 TagMatch reportScan(const String &base, const String &apiKey, const Tag &tag, const Filament &f,
                     const String &readerName);
+// The spool a tag's UID is linked to (Spoolman's own tag links, Card UIDs
+// or nfc_id), 0 for none; false, with error, when Spoolman can't be asked.
+bool spoolForUid(const String &base, const String &apiKey, const String &tagUid, int &spoolId, String &error);
 // Whether Spoolman answers, as a one-slot list for the page.
 SlotList spoolmanStatus(const PrinterConfig &server);

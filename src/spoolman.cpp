@@ -472,6 +472,39 @@ TagMatch reportScan(const String &base, const String &apiKey, const Tag &tag, co
     return match;
 }
 
+bool spoolForUid(const String &base, const String &apiKey, const String &tagUid, int &spoolId, String &error) {
+    spoolId = 0;
+    String uid = normalizeUid(tagUid);
+    if (!uid.length()) return true;
+    JsonDocument filter;
+    JsonObject only = filter.add<JsonObject>();
+    only["id"] = true;
+    only["archived"] = true;
+    only["tags"][0]["uid"] = true;
+    only["extra"][CARD_UIDS] = true;
+    only["extra"][NFC_ID] = true;
+    // Spoolman 0.27 finds the spool of its own tag links; older versions
+    // ignore "tag" and list every spool, which the check covers. Card UIDs
+    // are looked for in the whole list.
+    for (const String &path : std::vector<String>{"/spool?tag=" + uid, "/spool"}) {
+        JsonDocument spools;
+        if (!call(base, apiKey, "GET", path, "", spools, error, &filter)) return false;
+        JsonArrayConst list = spools.as<JsonArrayConst>();
+        for (JsonVariantConst s : list) {
+            if (s["archived"] | false) continue;
+            bool linked = hasUid(s, uid);
+            for (JsonVariantConst t : s["tags"].as<JsonArrayConst>())
+                if (normalizeUid(t["uid"] | "") == uid) linked = true;
+            if (linked) {
+                spoolId = s["id"] | 0;
+                return true;
+            }
+        }
+        if (list.size() > 1) break;
+    }
+    return true;
+}
+
 SlotList spoolmanStatus(const PrinterConfig &server) {
     SlotList list;
     JsonDocument info;

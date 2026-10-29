@@ -40,6 +40,10 @@ PrinterReply assignSlot(const PrinterConfig &printer, const Tag &tag, const Fila
 // the reason in reply.message and nothing sent, when the tag names no spool
 // or AFC has no Spoolman: the scan then needs a lane.
 bool afcNextLane(const PrinterConfig &printer, const Filament &f, PrinterReply &reply);
+// Happy Hare, AFC and lane data: the spool the printer's Spoolman has the
+// tag's UID linked to, for tags that name no spool themselves (0: none, or
+// no Spoolman; note says why when it matters).
+int linkedSpool(const PrinterConfig &printer, const Tag &tag, String &note);
 // FF_NFC: close the plugin's slot prompt.
 void cancelPrompt(const PrinterConfig &printer);
 SlotList listSlots(const PrinterConfig &printer);

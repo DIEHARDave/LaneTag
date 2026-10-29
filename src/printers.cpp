@@ -1612,6 +1612,31 @@ bool afcNextLane(const PrinterConfig &printer, const Filament &f, PrinterReply &
     return true;
 }
 
+int linkedSpool(const PrinterConfig &printer, const Tag &tag, String &note) {
+    if (printer.method != Method::HappyHare && printer.method != Method::Afc && printer.method != Method::LaneData)
+        return 0;
+    // The Spoolman that Moonraker (and AFC or Happy Hare with it) uses.
+    HttpResult result = moonraker(printer, "/server/config", "GET");
+    JsonDocument filter, doc;
+    filter["result"]["config"]["spoolman"]["server"] = true;
+    if (!result.ok() || deserializeJson(doc, result.body, DeserializationOption::Filter(filter))) {
+        note = "Spoolman not asked for the tag: " + moonrakerFailure(result, doc);
+        return 0;
+    }
+    String base = spoolmanBase(doc["result"]["config"]["spoolman"]["server"] | "");
+    if (!base.length()) return 0;
+    // Spoolman next to Moonraker is "localhost" to it, not to this reader.
+    for (const char *local : {"//localhost:", "//127.0.0.1:", "//0.0.0.0:"})
+        if (base.indexOf(local) >= 0) base.replace(String(local).substring(2), printer.host + ":");
+    int spoolId = 0;
+    String error;
+    if (!spoolForUid(base, "", tag.uidHex(), spoolId, error))
+        note = "Spoolman not asked for the tag: " + error;
+    else if (!spoolId)
+        note = "no spool in Spoolman is linked to tag " + tag.uidHex();
+    return spoolId;
+}
+
 PrinterReply sendScan(const PrinterConfig &printer, const Tag &tag, const String &readerName, int slot) {
     if (printer.method == Method::FfNfc) return ffNfcScan(printer, tag, readerName, slot);
     PrinterReply reply;
