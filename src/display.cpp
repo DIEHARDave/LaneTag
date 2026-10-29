@@ -434,7 +434,7 @@ void Display::scanText(String &name, String &brand, String &detail, String &stat
         int nozzle = f.nozzleTemp();
         if (nozzle) detail += (detail.length() ? "  " : "") + String(nozzle) + "°" "C";
     } else if (last.printerTitle.length()) {
-        // zmod_nfc decodes formats the reader does not know.
+        // FF_NFC decodes formats the reader does not know.
         name = last.printerTitle;
     } else {
         name = f.spoolId ? "Spool tag" : "Unknown tag";
@@ -455,7 +455,7 @@ void Display::scanText(String &name, String &brand, String &detail, String &stat
     spool = last.printerSpool ? last.printerSpool : f.spoolId;
     status = last.status;
     if (last.waiting && last.printer >= 0 && last.printer < (int)app.config.printers.size())
-        status = app.config.printers[last.printer].method == Method::ZmodNfc ? "Pick the slot on the printer's screen"
+        status = app.config.printers[last.printer].method == Method::FfNfc ? "Pick the slot on the printer's screen"
                                                                              : "Pick a slot on the web page";
     if (!last.ok && status.length()) status = "! " + status;
 }

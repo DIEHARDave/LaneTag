@@ -336,12 +336,15 @@ void identifyMoonraker(const String &host) {
         add(f);
         return;
     }
-    bool zmod = false, zmodNfc = false, ifs = false, u1 = false, mmu = false, afc = false, qidi = false;
+    bool zmod = false, ffNfc = false, kiln = false, ifs = false, u1 = false, mmu = false, afc = false,
+         qidi = false;
     int extruders = 0;
     for (JsonVariantConst o : objects["result"]["objects"].as<JsonArrayConst>()) {
         String name = o.as<String>();
-        if (name == "zmod_nfc") zmodNfc = true;
+        // FF_NFC was zmod_nfc on Zmod before.
+        if (name == "ff_nfc" || name == "zmod_nfc") ffNfc = true;
         if (name == "zmod" || name == "zmod_color" || name == "zmod_ifs" || name == "zmod_nfc") zmod = true;
+        if (name == "ifs_materials") kiln = true;
         if (name == "zmod_ifs") ifs = true;
         if (name == "print_task_config") u1 = true;
         if (name == "mmu") mmu = true;
@@ -361,11 +364,16 @@ void identifyMoonraker(const String &host) {
         // zmod_afclite adds AFC objects to Zmod printers; Zmod comes first.
         f.model = extruders >= 4 ? Model::Creator5 : ifs ? Model::AD5X : Model::Adventurer5M;
         f.method = f.model == Model::Adventurer5M ? Method::LaneData
-                   : zmodNfc                       ? Method::ZmodNfc
+                   : ffNfc                         ? Method::FfNfc
                                                    : Method::ZmodBasic;
         label = f.model == Model::Creator5 ? "Creator 5" : f.model == Model::AD5X ? "AD5X" : "AD5M";
-        if (!zmodNfc && f.model != Model::Adventurer5M)
-            f.note = "Zmod without the zmod_nfc plugin: color and material only";
+        if (!ffNfc && f.model != Model::Adventurer5M)
+            f.note = "Zmod without the FF_NFC plugin: color and material only";
+    } else if (kiln && ffNfc) {
+        // Kiln OS on an AD5X (its IFS is ifs/ifs_materials) with FF_NFC.
+        f.model = Model::AD5X;
+        f.method = Method::FfNfc;
+        label = "AD5X";
     } else if (u1) {
         f.model = Model::SnapmakerU1;
         f.method = spoolLink ? Method::Snapmaker : Method::SnapmakerStock;

@@ -1,4 +1,4 @@
-// Key derivations from zmod_nfc's decoders/vendors.py (adapted there from
+// Key derivations from FF_NFC's decoders/vendors.py (adapted there from
 // OpenRFID, GPL-3.0; keys from the Bambu Research Group RFID guide, the
 // Creality CFS RFID research and DnG-Crafts U1-RFID).
 #include "keys.h"

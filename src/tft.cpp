@@ -491,7 +491,7 @@ void Tft::drawScan() {
         brand = f.brand.length() ? f.brand : f.name;
         if (f.color >= 0) detail = String(colorName(f.color)) + "  #" + f.colorHex();
     } else if (last.printerTitle.length()) {
-        // zmod_nfc decodes formats the reader does not know.
+        // FF_NFC decodes formats the reader does not know.
         name = last.printerTitle;
     } else {
         name = f.spoolId ? "Spool tag" : "Unknown tag";
@@ -566,14 +566,14 @@ void Tft::drawScan() {
     lcd.setFont(SMALL);
     if (last.waiting && target && !touch_) {
         lcd.setTextColor(WARN, BG);
-        wrap(target->method == Method::ZmodNfc ? "Pick a slot on the printer or the web page"
+        wrap(target->method == Method::FfNfc ? "Pick a slot on the printer or the web page"
                                                : "Pick a slot on the web page",
              10, sy + ss + 8, w_ - 20, 3);
         return;
     }
     if (last.waiting && target) {
         lcd.setTextColor(WARN, BG);
-        String where = target->method == Method::ZmodNfc ? "Pick a slot here or on the printer:"
+        String where = target->method == Method::FfNfc ? "Pick a slot here or on the printer:"
                                                          : "Pick a slot here or on the web page:";
         lcd.drawString(where.c_str(), 10, PICK_Y - 20);
         lcd.setFont(TITLE);

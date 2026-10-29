@@ -32,23 +32,23 @@ printers and their IP addresses, and how each printer is reached.
 > **Status: early release.** Tested on an **ESP32-C3 SuperMini** with a
 > **PN532 over I2C & HSU**: OpenSpool (NTAG) and Snapmaker (MIFARE Classic, keys
 > derived from the UID) tags, assigned on a **Creator 5** and an **AD5X**
-> running Zmod and zmod_nfc (from the printer's prompt and with the reader
-> fixed to one slot), and to an **AD5X's stock screen** through the stock
+> running Zmod and FF_NFC (then zmod_nfc), from the printer's prompt and with
+> the reader fixed to one slot, and to an **AD5X's stock screen** through the stock
 > API, and to an unmodified
 > **Creator 5 Pro on stock firmware**. The firmware
 > builds for ESP32, ESP32-S3, ESP32-C3, ESP32-C6 and ESP32-C5 without warnings. Its decoders and
-> MIFARE key derivation match [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc)'s
-> (identical results for every tag in zmod_nfc's decoder tests, identical
+> MIFARE key derivation match [FF_NFC](https://github.com/DIEHARDave/FF_NFC)'s
+> (identical results for every tag in FF_NFC's decoder tests, identical
 > Bambu, Creality and Snapmaker keys). Not yet tried: Bambu and Creality
 > tags, a factory-fresh printer, and
 > the **Zmod basic** method. The PN532 works over I2C and HSU (ESP32-C3 and
 > classic ESP32), and the RC522 read tags on an ESP32-C3. On a **CYD**
 > (ESP32-2432S028, ST7789 version) with a PN532 over HSU, scans reach an
-> AD5X with zmod_nfc, and its printer, fixed-slot and "put the waiting scan
+> AD5X with FF_NFC, and its printer, fixed-slot and "put the waiting scan
 > here" touch buttons all work. **PN5180
 > support has not been run on hardware yet** (it builds; its driver is
-> written from the NXP datasheet, its command layer follows zmod_nfc's). The OpenPrintTag decoder gives the same results as
-> zmod_nfc's on its six OpenPrintTag test dumps. Reports are welcome.
+> written from the NXP datasheet, its command layer follows FF_NFC's). The OpenPrintTag decoder gives the same results as
+> FF_NFC's on its six OpenPrintTag test dumps. Reports are welcome.
 
 ## Printer methods
 
@@ -56,7 +56,7 @@ Each printer on the reader's list uses one of these methods:
 
 | Printer & Method | Printer runs | What a scan does |
 |------------------|--------------|------------------|
-| **Flashforge AD5X / Creator 5**<br><br>Zmod + zmod_nfc | Zmod with the [zmod_nfc](https://github.com/DIEHARDave/zmod_nfc) plugin | The **whole tag read** goes through Moonraker to the plugin (no extra port or service on the printer), which handles it exactly like a tag on a USB reader plugged into the printer: it decodes every format zmod_nfc knows, looks the spool up in **Spoolman** (spool ID on the tag, or the tag's UID), shows its **slot popup on the printer's screen** (or takes the slot you insert filament into), sets the slot through zmod_afclite's `SET_SPOOL_ID` or Zmod's `CHANGE_ZCOLOR`, and fills in Moonraker's **lane_data** for OrcaSlicer. The reader's web page can pick the slot too. |
+| **Flashforge AD5X / Creator 5**<br><br>FF_NFC plugin | Zmod (AD5X, Creator 5) or Kiln OS (AD5X) with the [FF_NFC](https://github.com/DIEHARDave/FF_NFC) plugin (zmod_nfc before) | The **whole tag read** goes through Moonraker to the plugin (no extra port or service on the printer), which handles it exactly like a tag on a USB reader plugged into the printer: it decodes every format FF_NFC knows, looks the spool up in **Spoolman** (spool ID on the tag, or the tag's UID), shows its **slot popup on the printer's screen** (or takes the slot you insert filament into), sets the slot (on Zmod through zmod_afclite's `SET_SPOOL_ID` or Zmod's `CHANGE_ZCOLOR`, on Kiln OS with `IFS_SET_MATERIAL`), and fills in Moonraker's **lane_data** for OrcaSlicer. The reader's web page can pick the slot too. |
 | **Flashforge AD5X / Creator 5**<br><br>Zmod basic | Zmod, no plugin | Material and color go to the slot through Moonraker (`CHANGE_ZCOLOR`), snapped to Zmod's material list and color palette, and the slot's **lane_data** entry gets the material, color, vendor, temperatures and the tag's Spoolman spool ID if it carries one. No Spoolman lookup. |
 | **Flashforge AD5X / Creator 5**<br><br>Stock firmware | Flashforge firmware | Material and color through the printer's local API (`msConfig_cmd` on port 8898) - that is all the stock API offers. Needs the printer's **serial number** and **check code**. The stock screens can only draw their own 24 colors (a different set on each model), so the color is snapped to the closest one (CIEDE2000), and on the Creator 5 the material to its list. |
 | **Snapmaker U1**<br><br>Extended firmware | paxx12's [Extended firmware](https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware) | The scan reaches the head **as if the head's own RFID reader had read it**: the reader decodes the tag and posts it to Klipper's `filament_detect/set` endpoint through Moonraker, as the firmware's OpenRFID does (vendor "Generic" unless it is Snapmaker filament, so the slicer finds a profile). The screen, the slicer and the firmware's **SpoolLink** see it like any other read: with Spoolman set up in the firmware, SpoolLink looks the tag's UID up in Spoolman and loads that spool. A tag naming a Spoolman spool ID is bound to it with `SET_SPOOL_ID`; a tag with no filament data works when its UID is already bound to a spool. Nothing to install. Heads are not changed while the printer prints. Each reader is **always fixed to one head** (no "Ask"). |
@@ -67,11 +67,11 @@ Each printer on the reader's list uses one of these methods:
 | **Creality K1 / K1 Max / K1C / K2 / Hi**<br><br>Stock firmware (CFS) | A CFS, stock firmware | The slot's **material, color, nozzle temperatures** and the matching **entry of the printer's material library** go over the WebSocket Creality Print uses (port 9999, `modifyMaterial`), so the printer's screen and the slicer see it as if it had been picked in Creality Print. The library entry is the tag's own material on a Creality tag, else the tag's brand and material, else a Generic one of the material (its pressure advance comes along). Each reader serves **one CFS** (slots 1A-1D, 2A-2D, ...) or the **external spool**. Like Creality Print it leaves slots alone while the printer prints or the CFS feeds, and never touches a slot holding a Creality RFID spool (the CFS reads that tag itself). Nothing to enter but the IP address. No Spoolman. |
 | **Klipper**<br><br>Happy Hare MMU | Klipper with [Happy Hare](https://github.com/moggieuk/Happy-Hare) | The gate gets the tag's material, color, name, vendor and temperature through Moonraker (`MMU_GATE_MAP`), plus the tag's UID (Happy Hare 4 keeps it with the gate). With Happy Hare's Spoolman support on, a tag naming a Spoolman spool assigns that spool to the gate; in **pull** mode, where the gate map comes from Spoolman, only such tags can change a gate (`MMU_SPOOLMAN`). OrcaSlicer reads Happy Hare's gate map by itself. Each reader covers four gates (0-3, 4-7, ...). |
 | **Klipper**<br><br>AFC | Klipper with [AFC](https://github.com/AFCProject/AFC-Klipper-Add-On) (Box Turtle, Night Owl, ...) | A tag naming a Spoolman spool is assigned to the lane with `SET_SPOOL_ID` (when AFC has Spoolman), and AFC fills in material, color, temperatures and weight from Spoolman; other tags set the lane's material, color and temperatures (`SET_MATERIAL`, `SET_COLOR`, `AFC_SET_SPOOL_TEMP`). AFC writes the lane's lane_data for OrcaSlicer itself. Each reader covers four lanes in AFC's order (whatever they are named). With **Tags naming a Spoolman spool: Go to the next lane loaded**, no lane is picked: the spool ID goes to AFC's `SET_NEXT_SPOOL_ID`, and AFC gives it to whichever lane you load next (other tags still go to the reader's slot). |
-| **Spoolman (no printer)**<br><br>Spoolman API | A [Spoolman](https://github.com/Donkie/Spoolman) server (port 7912) | No printer: the reader is a **Spoolman station** (by the shelf, the dryer, the scale). The spool is the one whose ID is on the tag, else the one with the tag's UID in its **Card UIDs** field (or nfc2klipper's `nfc_id`), else the only spool with the tag's brand, material and color, and the tag's UID is then added to its Card UIDs. With **Add them as new spools** (the default), a tag with filament data that matches nothing becomes a new spool (vendor and filament reused when Spoolman has them, "Card UIDs" field created if missing). An optional **location** is set on every scanned spool. The reply names the spool and its remaining weight. These are the UIDs zmod_nfc, zmod_afclite and the U1's SpoolLink match, so spools bound here are found by those printers too. |
+| **Spoolman (no printer)**<br><br>Spoolman API | A [Spoolman](https://github.com/Donkie/Spoolman) server (port 7912) | No printer: the reader is a **Spoolman station** (by the shelf, the dryer, the scale). The spool is the one whose ID is on the tag, else the one with the tag's UID in its **Card UIDs** field (or nfc2klipper's `nfc_id`), else the only spool with the tag's brand, material and color, and the tag's UID is then added to its Card UIDs. With **Add them as new spools** (the default), a tag with filament data that matches nothing becomes a new spool (vendor and filament reused when Spoolman has them, "Card UIDs" field created if missing). An optional **location** is set on every scanned spool. The reply names the spool and its remaining weight. These are the UIDs FF_NFC, zmod_afclite and the U1's SpoolLink match, so spools bound here are found by those printers too. |
 | **Klipper**<br><br>Moonraker lane data | Any Klipper printer with Moonraker | The tool's entry in Moonraker's **lane_data** (read by OrcaSlicer's filament sync) gets the material, color, vendor, temperatures and Spoolman spool ID. On a printer with a **single lane**, a tag naming a Spoolman spool also makes it Moonraker's **active spool** (with Spoolman set up in Moonraker). Each reader covers up to four lanes (T0-T3, T4-T7, ...): one per extruder Klipper has, or as many as the printer's lane_data already lists when that is more (an AD5X's IFS feeds four lanes into one extruder). So a plain single-extruder printer only ever offers **T0**. Also works on Zmod printers (Creator 5, AD5X), next to their own methods. |
 
 > **Stock firmware and Zmod basic: give each printer a fixed slot.** Only
-> zmod_nfc can show a "which slot?" popup on the printer's screen. With the
+> FF_NFC can show a "which slot?" popup on the printer's screen. With the
 > other two methods the printer cannot ask, so set **Slot for this reader**
 > on the Printers tab (new stock and Zmod basic printers start on slot 1):
 > every scan then fills that slot by itself. If you choose **"Ask on this
@@ -310,16 +310,19 @@ the file is `.pio/build/<board>/firmware.bin`).
      button that fills in a new printer with the model and method it found.
      Check the slot, enter any code it needs, and **Save**. It finds:
      Moonraker printers, sorted by what Klipper loads (Zmod AD5X / Creator
-     5 / AD5M and whether zmod_nfc is installed, Snapmaker U1 Extended or
+     5 / AD5M and whether FF_NFC is installed, Kiln OS AD5X with FF_NFC,
+     Snapmaker U1 Extended or
      stock, Qidi Box, Happy Hare, AFC, else lane data); Flashforge stock
      firmware by its own UDP discovery (fills in the serial number);
      Bambu printers by their SSDP announcements (fills in the serial
      number); Creality's WebSocket (port 9999), Anycubic's LAN handshake
      (port 18910) and Spoolman servers (port 7912). Printers that are off,
      asleep, or on another subnet do not show up.
-   * **Zmod + zmod_nfc**: install or update zmod_nfc on the printer. The
-     reader reaches it through Moonraker (port 7125); zmod_nfc adds
-     endpoints to Moonraker's API rather than opening a port of its own.
+   * **FF_NFC plugin**: install or update FF_NFC on the printer (Zmod or
+     Kiln OS). The reader reaches it through Moonraker (port 7125); FF_NFC
+     adds endpoints to Moonraker's API rather than opening a port of its
+     own. Printers still on zmod_nfc, FF_NFC's name before, keep working
+     with this method until they are moved over.
    * **Zmod basic**: nothing to install; uses Moonraker on port 7125.
    * Both Zmod methods work when the reader's address is in Moonraker's
      `[authorization] trusted_clients`, which Zmod sets to every address by
@@ -401,7 +404,7 @@ reader rests for 3 seconds, so the spool read again as it is lifted off or
 put back cannot replace a good scan (**Read the tag again** on the page
 skips the wait).
 
-* **Zmod + zmod_nfc:** the printer's screen asks which slot the spool goes
+* **FF_NFC plugin:** the printer's screen asks which slot the spool goes
   in, just like with a USB reader. Tap a slot there, insert the filament
   into an empty slot, or click a slot on the reader's page. **Send to
   printer again** reopens the popup.
@@ -456,7 +459,7 @@ Creator 5) with no question asked. Mount one reader at each IFS slot, set
 each to its own slot, and a spool is assigned just by setting it on its
 slot's reader.
 
-With zmod_nfc, everything else still happens: the Spoolman lookup, lane
+With FF_NFC, everything else still happens: the Spoolman lookup, lane
 data, and Zmod's color popup is skipped when you then insert the filament.
 A reader can have a fixed slot on one printer and ask on another.
 
@@ -555,7 +558,7 @@ With an OLED set up under **Settings > Display**, the reader shows:
   yellow band on two-color OLEDs), brand, the Spoolman spool
   (`#19`), a color name with its hex value (the screen is monochrome) and
   the nozzle temperature, then what happened (sent, assigned, pick the slot
-  on the printer, or the error). Tags only the zmod_nfc plugin can decode show
+  on the printer, or the error). Tags only the FF_NFC plugin can decode show
   the printer's name for the spool.
 * with no scan for 5 minutes: "Ready" and the IP address, or the reader error
 * in setup mode: the setup network, its password and the address to open
@@ -576,7 +579,7 @@ its pins, whether SDA or SCL is held low, or that nothing answers at all
 
 ### A 16x2 character LCD
 
-![A 1602 I2C LCD on an ESP32-C3 SuperMini after a scan of a PLA Strawberry spool: the filament name and the zmod_nfc status scroll along the two rows](docs/lcd1602-display.jpg)
+![A 1602 I2C LCD on an ESP32-C3 SuperMini after a scan of a PLA Strawberry spool: the filament name and the FF_NFC status scroll along the two rows](docs/lcd1602-display.jpg)
 
 The common "1602 I2C" LCD (an HD44780 with a PCF8574 backpack) works too:
 choose **LCD 1602** under **Settings > Display**, its SDA and SCL pins and
@@ -645,7 +648,7 @@ on GPIO 2 (SDA) and 3 (SCL). The WS2812 is on GPIO 8 here too.
 
 ## Tag formats
 
-| Format | Decoded on the reader | Decoded by zmod_nfc |
+| Format | Decoded on the reader | Decoded by FF_NFC |
 |--------|-----------------------|---------------------|
 | OpenSpool (NDEF JSON) | yes | yes |
 | Spoolman links and nfc2klipper `SPOOL:` | spool ID only | yes, with the Spoolman lookup |
@@ -658,9 +661,9 @@ on GPIO 2 (SDA) and 3 (SCL). The WS2812 is on GPIO 8 here too.
 | OpenPrintTag (ISO 15693) | yes, with a PN5180 (the PN532 and RC522 cannot read ISO 15693) | yes |
 
 The reader derives the Bambu, Creality and Snapmaker MIFARE keys from each
-tag's UID, as zmod_nfc does, so those tags are read completely. With the
-zmod_nfc method the raw read is decoded on the printer, so every format
-zmod_nfc supports works, including ones the reader does not decode itself.
+tag's UID, as FF_NFC does, so those tags are read completely. With the
+FF_NFC method the raw read is decoded on the printer, so every format
+FF_NFC supports works, including ones the reader does not decode itself.
 
 ## Notes
 
@@ -670,7 +673,7 @@ zmod_nfc supports works, including ones the reader does not decode itself.
   expose the reader or the printers to the internet. Set a page password if
   others share your network.
 * A tag that only names a Spoolman spool (a Spoolman QR/NFC link) has no
-  material or color of its own: use the zmod_nfc method, which looks it up.
+  material or color of its own: use the FF_NFC method, which looks it up.
 * The reader sends a tag once; take it away and back to send it again, or
   press **Read the tag again**.
 
@@ -685,13 +688,13 @@ The page uses a small JSON API, also usable from scripts: `GET /api/status`
 `POST /api/discover` (start a printer search) and `GET /api/discover` (its
 progress and the printers found so far),
 `POST /api/restart` and `POST /update` (firmware). The protocol between the
-reader and zmod_nfc is in zmod_nfc's
-[docs/remote-api.md](https://github.com/DIEHARDave/zmod_nfc/blob/main/docs/remote-api.md).
+reader and FF_NFC is in FF_NFC's
+[docs/remote-api.md](https://github.com/DIEHARDave/FF_NFC/blob/main/docs/remote-api.md).
 
 ## Credits
 
 The tag reading, decoders and key derivations are ported from
-[zmod_nfc](https://github.com/DIEHARDave/zmod_nfc), which adapted them from
+[FF_NFC](https://github.com/DIEHARDave/FF_NFC), which adapted them from
 [OpenRFID](https://github.com/suchmememanyskill/OpenRFID) (GPL-3.0), building
 on the Bambu Research Group RFID guide, the Creality CFS RFID research,
 DnG-Crafts' ACE-RFID and U1-RFID, and the TigerTag project. The stock

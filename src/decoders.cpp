@@ -49,7 +49,7 @@ bool isDigits(const String &text) {
 }
 
 // Bed temperature defaults by material, for formats that only carry
-// nozzle temperatures (zmod_nfc's MATERIAL_DEFAULTS).
+// nozzle temperatures (FF_NFC's MATERIAL_DEFAULTS).
 Filament withDefaults(Filament f) {
     static const struct { const char *material; int bed; } DEFAULTS[] = {
         {"PLA", 55}, {"PLA-CF", 60}, {"PETG", 70}, {"PETG-CF", 70}, {"ABS", 95},

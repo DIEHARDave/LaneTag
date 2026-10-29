@@ -10,9 +10,9 @@
 struct PrinterReply {
     bool ok = false;
     String message;     // for the web page
-    String outcome;     // zmod_nfc: prompt, assigned, disabled, printing, no_data
-    String title;       // zmod_nfc: what the printer made of the tag
-    int spoolId = 0;    // zmod_nfc: the Spoolman spool the printer found
+    String outcome;     // FF_NFC: prompt, assigned, disabled, printing, no_data
+    String title;       // FF_NFC: what the printer made of the tag
+    int spoolId = 0;    // FF_NFC: the Spoolman spool the printer found
 };
 
 struct SlotInfo {
@@ -30,7 +30,7 @@ struct SlotList {
     std::vector<SlotInfo> slots;
 };
 
-// zmod_nfc: hand the raw read to the plugin, which prompts on the printer,
+// FF_NFC: hand the raw read to the plugin, which prompts on the printer,
 // or with slot > 0 assigns it to that slot straight away.
 PrinterReply sendScan(const PrinterConfig &printer, const Tag &tag, const String &readerName, int slot = 0);
 // Put the scanned spool into a slot (1-based).
@@ -40,7 +40,7 @@ PrinterReply assignSlot(const PrinterConfig &printer, const Tag &tag, const Fila
 // the reason in reply.message and nothing sent, when the tag names no spool
 // or AFC has no Spoolman: the scan then needs a lane.
 bool afcNextLane(const PrinterConfig &printer, const Filament &f, PrinterReply &reply);
-// zmod_nfc: close the plugin's slot prompt.
+// FF_NFC: close the plugin's slot prompt.
 void cancelPrompt(const PrinterConfig &printer);
 SlotList listSlots(const PrinterConfig &printer);
 // Klipper: remember how many slots the printer has for this reader (and

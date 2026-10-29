@@ -1,5 +1,5 @@
 // NFC Forum NDEF: finding the message in a tag's memory and splitting it
-// into records. Port of zmod_nfc's decoders/ndef.py.
+// into records. Port of FF_NFC's decoders/ndef.py.
 #pragma once
 
 #include <vector>

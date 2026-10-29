@@ -1,4 +1,4 @@
-// Tag reading from zmod_nfc's readers/base.py.
+// Tag reading from FF_NFC's readers/base.py.
 #include "reader.h"
 
 #include "keys.h"
@@ -343,7 +343,7 @@ bool TagReader::readType4(const NfcTarget &target, Tag &tag) {
     return true;
 }
 
-// Every block of an ISO 15693 tag, as zmod_nfc's read_type5. Requests are
+// Every block of an ISO 15693 tag, as FF_NFC's read_type5. Requests are
 // addressed, so the tag never needs selecting again.
 bool TagReader::readType5(const NfcTarget &target, Tag &tag) {
     tag.kind = TagKind::Type5;

@@ -1,5 +1,5 @@
 // MIFARE Classic keys per tag family, derived from the tag's UID like
-// zmod_nfc's decoders do (Bambu Lab, Snapmaker, Creality). The family names
+// FF_NFC's decoders do (Bambu Lab, Snapmaker, Creality). The family names
 // are sent to the printer plugin, whose decoders check them.
 #pragma once
 

@@ -1,6 +1,6 @@
 // What the reader produced (Tag) and what the decoders understood (Filament).
 //
-// Mirrors zmod_nfc's zmodnfc/tag.py, so a Tag can be sent to the printer
+// Mirrors FF_NFC's python/ffnfc/tag.py, so a Tag can be sent to the printer
 // plugin as is and decoded there with every format it knows.
 #pragma once
 
@@ -9,7 +9,7 @@
 
 enum class TagKind : uint8_t { Unknown, Type2, MifareClassic, Type4, Type5 };
 
-// zmod_nfc's names for the kinds ("type2", "mifare_classic", "type4",
+// FF_NFC's names for the kinds ("type2", "mifare_classic", "type4",
 // "type5").
 const char *tagKindName(TagKind kind);
 

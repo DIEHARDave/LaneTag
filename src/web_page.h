@@ -98,7 +98,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
 <section id="printers">
   <div class="card">
     <h2>Printers</h2>
-    <div class="hint">Pick a method per printer. <b>zmod_nfc</b> sends the whole tag to the zmod_nfc plugin, which shows its slot popup, matches Spoolman and fills lane data. <b>Zmod basic</b> sets slot color and material through Moonraker (no plugin needed). <b>Stock</b> uses Flashforge's local API: slot color and material only; it needs the printer's serial number and check code. A <b>Snapmaker U1</b> with paxx12's Extended firmware gets each scan as its head's own RFID read, and its SpoolLink matches the tag in Spoolman; each U1 reader is fixed to one head. On a U1 with Snapmaker's <b>stock firmware</b> a scan sets the head's material, vendor and color the way an edit on the screen does (no Spoolman matching). A <b>Bambu Lab</b> printer in LAN mode gets the tray's material, color and Generic preset over its MQTT broker; it needs the serial number and the LAN access code from the printer's network settings (newer firmware also needs Developer Mode). <b>Klipper</b> printers go through Moonraker: <b>Happy Hare</b> sets the MMU gate map, <b>AFC</b> (Box Turtle, Night Owl, ...) sets a lane, and <b>lane data</b> fills Moonraker's lane_data for OrcaSlicer on any Klipper printer (also the method for a <b>Flashforge AD5M</b> on Zmod or Forge-X, which has no filament slots to set); tags naming a Spoolman spool are assigned through Spoolman. A <b>Creality K1 / K2 / Hi</b> with a CFS gets the slot's material and color the way Creality Print sets it (stock firmware, nothing to enter but the IP address); slots holding a Creality RFID spool are left to the CFS. An <b>Anycubic Kobra</b> (Kobra 3 / S1 generation) with an ACE in LAN mode gets the slot's material and color over its own MQTT broker; turn LAN mode on at the printer, nothing else to enter. A <b>Qidi</b> Plus4 / Q2 / Max4 with a Box gets the slot's filament, color and vendor from the printer's own lists, as its RFID reader sets them (stock firmware, through Moonraker). <b>Spoolman (no printer)</b> makes this a stand-alone reader for Spoolman itself (IP address of the Spoolman server, port 7912): a scan finds the spool by the spool ID on the tag, by the tag's UID in the spool's Card UIDs, or as the only spool with the tag's brand, material and color (the tag is then bound to it), and can add spools Spoolman does not have yet. Printers running zmod_nfc, AFC-lite or SpoolLink find those spools by the same UIDs.</div>
+    <div class="hint">Pick a method per printer. <b>FF_NFC</b> sends the whole tag to the FF_NFC plugin (Zmod or Kiln OS), which shows its slot popup, matches Spoolman and fills lane data. <b>Zmod basic</b> sets slot color and material through Moonraker (no plugin needed). <b>Stock</b> uses Flashforge's local API: slot color and material only; it needs the printer's serial number and check code. A <b>Snapmaker U1</b> with paxx12's Extended firmware gets each scan as its head's own RFID read, and its SpoolLink matches the tag in Spoolman; each U1 reader is fixed to one head. On a U1 with Snapmaker's <b>stock firmware</b> a scan sets the head's material, vendor and color the way an edit on the screen does (no Spoolman matching). A <b>Bambu Lab</b> printer in LAN mode gets the tray's material, color and Generic preset over its MQTT broker; it needs the serial number and the LAN access code from the printer's network settings (newer firmware also needs Developer Mode). <b>Klipper</b> printers go through Moonraker: <b>Happy Hare</b> sets the MMU gate map, <b>AFC</b> (Box Turtle, Night Owl, ...) sets a lane, and <b>lane data</b> fills Moonraker's lane_data for OrcaSlicer on any Klipper printer (also the method for a <b>Flashforge AD5M</b> on Zmod or Forge-X, which has no filament slots to set); tags naming a Spoolman spool are assigned through Spoolman. A <b>Creality K1 / K2 / Hi</b> with a CFS gets the slot's material and color the way Creality Print sets it (stock firmware, nothing to enter but the IP address); slots holding a Creality RFID spool are left to the CFS. An <b>Anycubic Kobra</b> (Kobra 3 / S1 generation) with an ACE in LAN mode gets the slot's material and color over its own MQTT broker; turn LAN mode on at the printer, nothing else to enter. A <b>Qidi</b> Plus4 / Q2 / Max4 with a Box gets the slot's filament, color and vendor from the printer's own lists, as its RFID reader sets them (stock firmware, through Moonraker). <b>Spoolman (no printer)</b> makes this a stand-alone reader for Spoolman itself (IP address of the Spoolman server, port 7912): a scan finds the spool by the spool ID on the tag, by the tag's UID in the spool's Card UIDs, or as the only spool with the tag's brand, material and color (the tag is then bound to it), and can add spools Spoolman does not have yet. Printers running FF_NFC, AFC-lite or SpoolLink find those spools by the same UIDs.</div>
     <div id="printerList"></div>
     <div id="foundList"></div>
     <div class="actions">
@@ -188,7 +188,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const METHODS = {zmod_nfc: "Zmod + zmod_nfc", zmod_basic: "Zmod basic", stock: "Stock firmware", snapmaker: "Extended firmware", snapmaker_stock: "Stock firmware", bambu: "LAN mode (MQTT)", creality_cfs: "Stock firmware (CFS)", anycubic_ace: "LAN mode (ACE)", qidi_box: "Stock firmware (Box)", happy_hare: "Happy Hare MMU", afc: "AFC (Box Turtle, ...)", lane_data: "Moonraker lane data", spoolman: "Spoolman API"};
+const METHODS = {ff_nfc: "FF_NFC plugin", zmod_basic: "Zmod basic", stock: "Stock firmware", snapmaker: "Extended firmware", snapmaker_stock: "Stock firmware", bambu: "LAN mode (MQTT)", creality_cfs: "Stock firmware (CFS)", anycubic_ace: "LAN mode (ACE)", qidi_box: "Stock firmware (Box)", happy_hare: "Happy Hare MMU", afc: "AFC (Box Turtle, ...)", lane_data: "Moonraker lane data", spoolman: "Spoolman API"};
 const MODELS = {ad5x: "Flashforge AD5X", creator5: "Flashforge Creator 5", snapmaker_u1: "Snapmaker U1", bambu: "Bambu Lab", ad5m: "Flashforge AD5M (Zmod / Forge-X)", creality: "Creality K1 / K2 / Hi", anycubic: "Anycubic Kobra (ACE)", qidi: "Qidi Plus4 / Q2 / Max4", klipper: "Klipper", spoolman: "Spoolman (no printer)"};
 // The printer list is shown in alphabetical order.
 const MODEL_ORDER = Object.entries(MODELS).sort((a, b) => a[1].localeCompare(b[1]));
@@ -197,7 +197,7 @@ const MODEL_ORDER = Object.entries(MODELS).sort((a, b) => a[1].localeCompare(b[1
 // printers likewise have a method of their own.
 const U1 = "snapmaker_u1";
 const METHODS_FOR = {snapmaker_u1: ["snapmaker", "snapmaker_stock"], bambu: ["bambu"], klipper: ["happy_hare", "afc", "lane_data"], ad5m: ["lane_data"], creality: ["creality_cfs"], anycubic: ["anycubic_ace"], qidi: ["qidi_box"], spoolman: ["spoolman"]};
-const FLASHFORGE_METHODS = ["zmod_nfc", "zmod_basic", "stock"];
+const FLASHFORGE_METHODS = ["ff_nfc", "zmod_basic", "stock"];
 const methodsFor = model => METHODS_FOR[model] || FLASHFORGE_METHODS;
 const AMS_NAMES = {1: "AMS A", 2: "AMS B", 3: "AMS C", 4: "AMS D", 0: "External spool"};
 const ACE_NAMES = {1: "ACE 1", 2: "ACE 2", 3: "ACE 3", 4: "ACE 4"};
@@ -254,7 +254,7 @@ function renderTarget() {
   const p = status.printers[status.active];
   $("targetHint").textContent = !p ? "Add a printer on the Printers tab." :
     p.slot ? `This reader is fixed to ${slotName(p, p.slot)}: scans go straight into it.` :
-    p.method === "zmod_nfc" ? "Scans go straight to the printer, which asks for the slot on its screen." :
+    p.method === "ff_nfc" ? "Scans go straight to the printer, which asks for the slot on its screen." :
     "Keep this page open: after each scan, pick the slot below. This printer's screen cannot ask, and nothing is set until you do. To skip this, click a slot below to send every scan there.";
 }
 
@@ -283,7 +283,7 @@ function renderScan() {
     setStatus($("scanStatus"), s.status, s.status ? s.ok : undefined);
   }
   const p = status.printers[status.active];
-  $("resend").classList.toggle("hidden", !(s && p && p.method === "zmod_nfc"));
+  $("resend").classList.toggle("hidden", !(s && p && p.method === "ff_nfc"));
   $("cancel").classList.toggle("hidden", !(s && s.waiting));
 }
 
@@ -304,7 +304,7 @@ function renderSlots() {
     nextName ? `The next scan goes into ${nextName.label}. Click another ${p.model === U1 ? "head" : "slot, or Ask,"} to change that.` :
     "The printer asks where each scan goes. Click a slot to send every scan there instead.";
   const mark = on => on && !waiting ? "<br><em>next scan</em>" : "";
-  const ask = p && p.method === "zmod_nfc" ? "on the printer's screen" : "on this page";
+  const ask = p && p.method === "ff_nfc" ? "on the printer's screen" : "on this page";
   const tiles = waiting || (p && (p.model === U1 || slotCount(p) === 1)) ? [] : [`<button class="slot${next ? "" : " next"}" data-slot="0" ${busy ? "disabled" : ""}><i class="q">?</i><div><b>Ask</b><span>${ask}${mark(!next)}</span></div></button>`];
   for (const x of slots.slots) {
     const c = x.color ? `background:#${esc(x.color)}` : "";
@@ -408,10 +408,10 @@ function slotCount(p) {
   return 4;
 }
 
-// Only zmod_nfc can ask on the printer's screen. With the other methods
+// Only FF_NFC can ask on the printer's screen. With the other methods
 // "ask" means picking the slot on this page after every scan.
 function slotOptions(p) {
-  const ask = p.method === "zmod_nfc" ? "Ask on the printer's screen" : "Ask on this web page";
+  const ask = p.method === "ff_nfc" ? "Ask on the printer's screen" : "Ask on this web page";
   let html = p.model === U1 || slotCount(p) === 1 ? "" : `<option value="0" ${p.slot ? "" : "selected"}>${ask}</option>`;
   for (let n = 1; n <= slotCount(p); n++) html += `<option value="${n}" ${p.slot === n ? "selected" : ""}>Always ${slotName(p, n)}</option>`;
   return html;
@@ -478,12 +478,12 @@ function showMethodFields(card) {
   let value = +slot.value;
   // Switching to a method whose printer cannot ask: default to a fixed slot,
   // so a scan fills it without the web page.
-  if ((model === U1 || m !== "zmod_nfc" && card.dataset.method === "zmod_nfc") && !value) value = 1;
+  if ((model === U1 || m !== "ff_nfc" && card.dataset.method === "ff_nfc") && !value) value = 1;
   card.dataset.method = m;
   if (value > slotCount({model, unit, slots_found})) value = 1;
   slot.innerHTML = slotOptions({method: m, model, slot: value, unit, slots_found});
   value = +slot.value;
-  card.querySelector(".slot-warn").classList.toggle("hidden", m === "zmod_nfc" || value !== 0);
+  card.querySelector(".slot-warn").classList.toggle("hidden", m === "ff_nfc" || value !== 0);
   card.querySelectorAll(".m-stock").forEach(e => e.classList.toggle("hidden", m !== "stock" && m !== "bambu"));
   card.querySelectorAll(".m-unit").forEach(e => e.classList.toggle("hidden", !["bambu", "creality", "anycubic", "qidi", "klipper"].includes(model)));
   card.querySelectorAll(".m-spoolman").forEach(e => e.classList.toggle("hidden", m !== "spoolman"));
@@ -528,7 +528,7 @@ function collectPrinters() {
 
 $("addPrinter").onclick = () => {
   collectPrinters();
-  config.printers.push({name: "", host: "", model: "ad5x", method: "zmod_nfc", port: 0, serial: ""});
+  config.printers.push({name: "", host: "", model: "ad5x", method: "ff_nfc", port: 0, serial: ""});
   renderPrinters();
 };
 // Printers found on the network, each with a button that fills a new card.

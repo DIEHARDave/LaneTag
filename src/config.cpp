@@ -155,7 +155,7 @@ void readSecret(JsonObjectConst in, const char *key, String &value) {
 
 const char *methodName(Method method) {
     switch (method) {
-    case Method::ZmodNfc: return "zmod_nfc";
+    case Method::FfNfc: return "ff_nfc";
     case Method::ZmodBasic: return "zmod_basic";
     case Method::Snapmaker: return "snapmaker";
     case Method::Bambu: return "bambu";
@@ -182,7 +182,7 @@ bool methodFits(Model model, Method method) {
     case Model::Anycubic: return method == Method::AnycubicAce;
     case Model::Qidi: return method == Method::QidiBox;
     case Model::Spoolman: return method == Method::Spoolman;
-    default: return method == Method::ZmodNfc || method == Method::ZmodBasic || method == Method::Stock;
+    default: return method == Method::FfNfc || method == Method::ZmodBasic || method == Method::Stock;
     }
 }
 
@@ -204,7 +204,7 @@ const char *modelName(Model model) {
 uint16_t PrinterConfig::effectivePort() const {
     if (port) return port;
     switch (method) {
-    case Method::ZmodNfc:
+    case Method::FfNfc:
     case Method::ZmodBasic:
     case Method::Snapmaker:
     case Method::SnapmakerStock:
@@ -400,7 +400,9 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
             p.name.trim();
             p.host.trim();
             String model = o["model"] | "ad5x";
-            String method = o["method"] | "zmod_nfc";
+            // Unknown names, "zmod_nfc" from before FF_NFC among them, are
+            // FF_NFC.
+            String method = o["method"] | "ff_nfc";
             p.model = model == "creator5"       ? Model::Creator5
                       : model == "snapmaker_u1" ? Model::SnapmakerU1
                       : model == "bambu"        ? Model::Bambu
@@ -423,7 +425,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
                        : method == "qidi_box"   ? Method::QidiBox
                        : method == "snapmaker_stock" ? Method::SnapmakerStock
                        : method == "spoolman"   ? Method::Spoolman
-                                                : Method::ZmodNfc;
+                                                : Method::FfNfc;
             // The U1, Bambu and Klipper printers take only their own methods.
             if (!methodFits(p.model, p.method)) {
                 switch (p.model) {
@@ -435,7 +437,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
                 case Model::Spoolman: p.method = Method::Spoolman; break;
                 case Model::Klipper:
                 case Model::Adventurer5M: p.method = Method::LaneData; break;
-                default: p.method = Method::ZmodNfc; break;
+                default: p.method = Method::FfNfc; break;
                 }
             }
             p.port = constrain(o["port"] | 0, 0, 65535);

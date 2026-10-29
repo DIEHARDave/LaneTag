@@ -1,5 +1,5 @@
 // OpenPrintTag (Prusa, https://specs.openprinttag.org): the CBOR maps in an
-// "application/vnd.openprinttag" NDEF record. Port of zmod_nfc's
+// "application/vnd.openprinttag" NDEF record. Port of FF_NFC's
 // decoders/cbor.py and decode_openprinttag. Plain C++, so it can be tested
 // off the device.
 #pragma once

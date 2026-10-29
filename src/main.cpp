@@ -2,8 +2,9 @@
 // reader for 3D printers (formerly zmod_esp32-nfc).
 //
 // A scanned tag goes to the active printer (chosen on the web page):
-//   zmod_nfc    the whole read goes to the zmod_nfc plugin, which decodes
-//               it, looks it up in Spoolman and shows its slot prompt
+//   ff_nfc      the whole read goes to the FF_NFC plugin (Zmod or Kiln OS;
+//               zmod_nfc before), which decodes it, looks it up in Spoolman
+//               and shows its slot prompt
 //   zmod_basic  material and color go to Zmod through Moonraker, plus
 //               Moonraker's lane_data
 //   stock       material and color go to the stock firmware's local API
@@ -231,14 +232,14 @@ void App::handleTag(const Tag &tag) {
         return;
     }
     last.printer = config.active;
-    // Sending can take seconds (zmod_nfc waits for Spoolman); show the
+    // Sending can take seconds (FF_NFC waits for Spoolman); show the
     // filament meanwhile.
     auto sending = [&] {
         last.ok = true;
         last.status = "Sending to " + printer->name + "...";
         display.refresh();
     };
-    if (printer->method == Method::ZmodNfc) {
+    if (printer->method == Method::FfNfc) {
         sending();
         // The printer decodes the raw read itself; no need to know the format
         // here. A reader fixed to a slot skips the printer's prompt.
@@ -252,7 +253,7 @@ void App::handleTag(const Tag &tag) {
     if (!last.filament.hasFilamentData() && !takesSpoolOnlyTags(printer->method)) {
         last.status = last.filament.spoolId
                           ? "This tag only names Spoolman spool " + String(last.filament.spoolId) +
-                                "; only the zmod_nfc method can look it up"
+                                "; only the FF_NFC method can look it up"
                           : "No filament data found on this tag";
         feedback.play(Signal::Failure);
         return;
@@ -291,8 +292,8 @@ PrinterReply App::assignLast(int index, int slot) {
         return reply;
     }
     const PrinterConfig &printer = config.printers[index];
-    // A zmod_nfc printer that has not seen this tag yet gets it first.
-    if (printer.method == Method::ZmodNfc && last.printer != index) {
+    // An FF_NFC printer that has not seen this tag yet gets it first.
+    if (printer.method == Method::FfNfc && last.printer != index) {
         reply = sendScan(printer, last.tag, readerName());
         last.printer = index;
         if (!reply.ok) {

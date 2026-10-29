@@ -2,6 +2,7 @@
 
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <map>
 #include <math.h>
 #include <mbedtls/base64.h>
 
@@ -77,7 +78,7 @@ String upper(String text) {
 }
 
 // Zmod material type for a tag's material: exact match, then the base
-// without filler or modifiers, then the fallbacks zmod_nfc uses.
+// without filler or modifiers, then the fallbacks FF_NFC uses.
 String resolveMaterial(const String &input, JsonArrayConst validTypes) {
     String material = upper(input);
     std::vector<String> valid;
@@ -109,7 +110,7 @@ void rgbOf(uint32_t color, long &r, long &g, long &b) {
     b = color & 0xFF;
 }
 
-// Closest palette entry by the "redmean" weighted RGB distance (as zmod_nfc
+// Closest palette entry by the "redmean" weighted RGB distance (as FF_NFC
 // and zmod_afclite snap colors to Zmod's palette).
 String nearestPalette(uint32_t color, JsonArrayConst palette) {
     String best;
@@ -241,9 +242,9 @@ String slotLabel(bool toolchanger, int slot) {
     return toolchanger ? "T" + String(slot - 1) : "Slot " + String(slot);
 }
 
-// --- zmod_nfc ------------------------------------------------------------------
+// --- FF_NFC (zmod_nfc before) ----------------------------------------------------
 //
-// zmod_nfc registers Klipper endpoints (zmod_nfc/scan, ...), which Moonraker
+// FF_NFC registers Klipper endpoints (ff_nfc/scan, ...), which Moonraker
 // publishes on its HTTP API; no extra port on the printer.
 
 HttpResult moonraker(const PrinterConfig &printer, const String &path, const char *method,
@@ -258,7 +259,30 @@ String moonrakerFailure(const HttpResult &result, const JsonDocument &doc) {
     return describeFailure(result, doc);
 }
 
-const char *const NO_ZMOD_NFC = "zmod_nfc is not installed on the printer, or too old for network readers";
+const char *const NO_FF_NFC = "FF_NFC is not installed on the printer, or too old for network readers";
+
+// The plugin's name in Moonraker's paths: FF_NFC, or zmod_nfc on Zmod
+// printers not moved to FF_NFC yet. Whichever answered is kept per printer.
+const char *const NFC_PLUGINS[] = {"ff_nfc", "zmod_nfc"};
+std::map<String, int> nfcPluginOf;
+
+// A call to one of the plugin's endpoints ("scan", "info", ...); sets
+// plugin to the name that answered.
+HttpResult nfcCall(const PrinterConfig &printer, const String &endpoint, const char *method,
+                   const String &body, String &plugin) {
+    int first = nfcPluginOf.count(printer.host) ? nfcPluginOf[printer.host] : 0;
+    HttpResult result;
+    for (int i = 0; i < 2; i++) {
+        int index = (first + i) % 2;
+        plugin = NFC_PLUGINS[index];
+        result = moonraker(printer, "/printer/" + plugin + "/" + endpoint, method, body);
+        if (result.code != 404) {
+            nfcPluginOf[printer.host] = index;
+            break;
+        }
+    }
+    return result;
+}
 
 String scanBody(const Tag &tag, const String &readerName, int slot) {
     JsonDocument doc;
@@ -298,27 +322,28 @@ void describeOutcome(PrinterReply &reply, JsonObjectConst remote) {
     else if (reply.outcome == "no_slot")
         reply.ok = false, reply.message = remote["message"] | "The printer has no such slot";
     else if (reply.outcome == "disabled")
-        reply.ok = false, reply.message = "zmod_nfc is disabled on the printer (NFC_ENABLE turns it on)";
+        reply.ok = false, reply.message = "FF_NFC is disabled on the printer (NFC_ENABLE turns it on)";
     else if (reply.outcome == "printing")
-        reply.ok = false, reply.message = "The printer is printing; zmod_nfc ignores tags while printing";
+        reply.ok = false, reply.message = "The printer is printing; FF_NFC ignores tags while printing";
     else if (reply.outcome == "no_data")
         reply.ok = false, reply.message = "The printer found no filament data on this tag";
     else if (reply.outcome == "incomplete")
         reply.ok = false, reply.message = "The tag left the reader too soon; hold it still and scan again";
     else if (reply.outcome == "error")
-        reply.ok = false, reply.message = String("zmod_nfc: ") + (remote["error"] | "scan failed");
+        reply.ok = false, reply.message = String("FF_NFC: ") + (remote["error"] | "scan failed");
     else
         reply.message = reply.outcome;
     if (spoolman.length() && reply.ok) reply.message += " (Spoolman: " + spoolman + ")";
 }
 
-PrinterReply zmodNfcScan(const PrinterConfig &printer, const Tag &tag, const String &readerName, int slot) {
+PrinterReply ffNfcScan(const PrinterConfig &printer, const Tag &tag, const String &readerName, int slot) {
     PrinterReply reply;
-    HttpResult result = moonraker(printer, "/printer/zmod_nfc/scan", "POST", scanBody(tag, readerName, slot));
+    String plugin;
+    HttpResult result = nfcCall(printer, "scan", "POST", scanBody(tag, readerName, slot), plugin);
     JsonDocument doc;
     deserializeJson(doc, result.body);
     if (!result.ok()) {
-        reply.message = result.code == 404 ? String(NO_ZMOD_NFC) : moonrakerFailure(result, doc);
+        reply.message = result.code == 404 ? String(NO_FF_NFC) : moonrakerFailure(result, doc);
         return reply;
     }
     JsonObjectConst accepted = doc["result"];
@@ -327,15 +352,15 @@ PrinterReply zmodNfcScan(const PrinterConfig &printer, const Tag &tag, const Str
         return reply;
     }
     // Decoding and the Spoolman lookup run in the background on the
-    // printer; the outcome shows up in printer.zmod_nfc.remote.
+    // printer; the outcome shows up in printer.ff_nfc.remote.
     String id = accepted["id"] | "";
     uint32_t deadline = millis() + SCAN_TIMEOUT;
     while ((int32_t)(millis() - deadline) < 0) {
         delay(300);
-        HttpResult poll = moonraker(printer, "/printer/objects/query?zmod_nfc=remote", "GET");
+        HttpResult poll = moonraker(printer, "/printer/objects/query?" + plugin + "=remote", "GET");
         JsonDocument status;
         if (!poll.ok() || deserializeJson(status, poll.body)) continue;
-        JsonObjectConst remote = status["result"]["status"]["zmod_nfc"]["remote"];
+        JsonObjectConst remote = status["result"]["status"][plugin]["remote"];
         if (id == (remote["id"] | "")) {
             describeOutcome(reply, remote);
             return reply;
@@ -345,11 +370,12 @@ PrinterReply zmodNfcScan(const PrinterConfig &printer, const Tag &tag, const Str
     return reply;
 }
 
-PrinterReply zmodNfcAssign(const PrinterConfig &printer, const Tag &tag, int slot, const String &readerName) {
+PrinterReply ffNfcAssign(const PrinterConfig &printer, const Tag &tag, int slot, const String &readerName) {
     PrinterReply reply;
     String body = "{\"slot\":" + String(slot) + "}";
     for (int attempt = 0; attempt < 2; attempt++) {
-        HttpResult result = moonraker(printer, "/printer/zmod_nfc/assign", "POST", body);
+        String plugin;
+        HttpResult result = nfcCall(printer, "assign", "POST", body, plugin);
         JsonDocument doc;
         deserializeJson(doc, result.body);
         if (result.ok()) {
@@ -361,7 +387,7 @@ PrinterReply zmodNfcAssign(const PrinterConfig &printer, const Tag &tag, int slo
         reply.message = moonrakerFailure(result, doc);
         // The printer's prompt timed out or was dismissed: send the tag again.
         if (attempt == 0 && reply.message.indexOf("no scanned tag") >= 0) {
-            PrinterReply scan = zmodNfcScan(printer, tag, readerName, 0);
+            PrinterReply scan = ffNfcScan(printer, tag, readerName, 0);
             if (scan.ok && scan.outcome == "prompt") continue;
             return scan;
         }
@@ -370,13 +396,14 @@ PrinterReply zmodNfcAssign(const PrinterConfig &printer, const Tag &tag, int slo
     return reply;
 }
 
-SlotList zmodNfcSlots(const PrinterConfig &printer) {
+SlotList ffNfcSlots(const PrinterConfig &printer) {
     SlotList list;
-    HttpResult result = moonraker(printer, "/printer/zmod_nfc/info", "GET");
+    String plugin;
+    HttpResult result = nfcCall(printer, "info", "GET", "", plugin);
     JsonDocument doc;
     deserializeJson(doc, result.body);
     if (!result.ok()) {
-        list.error = result.code == 404 ? String(NO_ZMOD_NFC) : moonrakerFailure(result, doc);
+        list.error = result.code == 404 ? String(NO_FF_NFC) : moonrakerFailure(result, doc);
         return list;
     }
     for (JsonObjectConst s : doc["result"]["slots"].as<JsonArrayConst>()) {
@@ -466,8 +493,8 @@ String writeLaneData(const PrinterConfig &printer, int index, const Tag &tag, co
     else out.remove("nozzle_temp");
     if (f.bedTemp) out["bed_temp"] = f.bedTemp;
     else out.remove("bed_temp");
-    out["zmod_nfc_name"] = f.title();
-    out["zmod_nfc_uid"] = tag.uidHex();
+    out["ff_nfc_name"] = f.title();
+    out["ff_nfc_uid"] = tag.uidHex();
     String body;
     serializeJson(doc, body);
     HttpResult result = moonraker(printer, "/server/database/item", "POST", body);
@@ -478,7 +505,7 @@ PrinterReply basicAssign(const PrinterConfig &printer, const Tag &tag, const Fil
     PrinterReply reply;
     if (!f.hasFilamentData()) {
         reply.message = f.spoolId ? "The tag only names Spoolman spool " + String(f.spoolId) +
-                                        "; the zmod_nfc method looks those up"
+                                        "; the FF_NFC method looks those up"
                                   : "No filament data on this tag";
         return reply;
     }
@@ -1586,16 +1613,16 @@ bool afcNextLane(const PrinterConfig &printer, const Filament &f, PrinterReply &
 }
 
 PrinterReply sendScan(const PrinterConfig &printer, const Tag &tag, const String &readerName, int slot) {
-    if (printer.method == Method::ZmodNfc) return zmodNfcScan(printer, tag, readerName, slot);
+    if (printer.method == Method::FfNfc) return ffNfcScan(printer, tag, readerName, slot);
     PrinterReply reply;
-    reply.message = "only the zmod_nfc method takes whole scans";
+    reply.message = "only the FF_NFC method takes whole scans";
     return reply;
 }
 
 PrinterReply assignSlot(const PrinterConfig &printer, const Tag &tag, const Filament &filament, int slot,
                         const String &readerName) {
     switch (printer.method) {
-    case Method::ZmodNfc: return zmodNfcAssign(printer, tag, slot, readerName);
+    case Method::FfNfc: return ffNfcAssign(printer, tag, slot, readerName);
     case Method::ZmodBasic: return basicAssign(printer, tag, filament, slot);
     case Method::Snapmaker: return u1Assign(printer, tag, filament, slot);
     case Method::SnapmakerStock: return u1StockAssign(printer, filament, slot);
@@ -1612,12 +1639,14 @@ PrinterReply assignSlot(const PrinterConfig &printer, const Tag &tag, const Fila
 }
 
 void cancelPrompt(const PrinterConfig &printer) {
-    if (printer.method == Method::ZmodNfc) moonraker(printer, "/printer/zmod_nfc/cancel", "POST", "{}");
+    if (printer.method != Method::FfNfc) return;
+    String plugin;
+    nfcCall(printer, "cancel", "POST", "{}", plugin);
 }
 
 SlotList listSlots(const PrinterConfig &printer) {
     switch (printer.method) {
-    case Method::ZmodNfc: return zmodNfcSlots(printer);
+    case Method::FfNfc: return ffNfcSlots(printer);
     case Method::ZmodBasic: return basicSlots(printer);
     case Method::Snapmaker:
     case Method::SnapmakerStock: return u1Slots(printer);

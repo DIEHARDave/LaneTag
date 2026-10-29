@@ -18,8 +18,8 @@ struct ScanRecord {
     bool waiting = false;       // a slot still has to be picked
     bool ok = false;
     String status;              // what happened, for the page
-    String printerTitle;        // zmod_nfc: the printer's name for the spool
-    int printerSpool = 0;       // zmod_nfc: the Spoolman spool the printer found
+    String printerTitle;        // FF_NFC: the printer's name for the spool
+    int printerSpool = 0;       // FF_NFC: the Spoolman spool the printer found
 };
 
 struct App {
@@ -41,7 +41,7 @@ struct App {
     void handleTag(const Tag &tag);
     // Put the last scan into a slot of printer index.
     PrinterReply assignLast(int printer, int slot);
-    // zmod_nfc: send the last scan to printer index again (new prompt).
+    // FF_NFC: send the last scan to printer index again (new prompt).
     PrinterReply resendLast(int printer);
 
 private:
