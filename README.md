@@ -1,5 +1,7 @@
 # LaneTag
 
+> **Parts:** the printers, boards, readers and other gear that go with this project are listed at [projects.die-hard.net/gear](https://projects.die-hard.net/gear) (Amazon affiliate links).
+
 A Wi-Fi NFC/RFID filament tag reader for 3D printers, built from an
 **ESP32** and a **PN532**, **RC522** or **PN5180** module. Printers
 supported today: the **Flashforge AD5X**, the **Flashforge Creator 5**,
