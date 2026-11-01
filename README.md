@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/lanetag-logo-dark.svg">
+    <img src="docs/logo/lanetag-logo.svg" alt="LaneTag logo" width="520">
+  </picture>
+</p>
+
 # LaneTag
 
 > **Parts:** the printers, boards, readers and other gear that go with this project are listed at [projects.die-hard.net/gear](https://projects.die-hard.net/gear) (Amazon affiliate links).
