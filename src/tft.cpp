@@ -5,8 +5,11 @@
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 #include <WiFi.h>
+#include <esp_sleep.h>
 
 #include "app.h"
+#include "splash_logo.h"
+#include "version.h"
 
 // The CYD's screen: HSPI, backlight on GPIO 21. The Waveshare
 // ESP32-C6-LCD-1.47's: a 172x320 ST7789 (in the middle of its 240 columns)
@@ -140,6 +143,7 @@ constexpr uint32_t SCAN_SHOWN = 5 * 60 * 1000;
 constexpr uint32_t DRAW_INTERVAL = 200;
 constexpr uint32_t TOUCH_REPEAT = 250;
 constexpr uint8_t BRIGHTNESS = 200;
+constexpr uint32_t SPLASH_SHOWN = 3000;
 // A filament name too long for its line scrolls: still for a moment, then
 // one pixel per step, round with a gap.
 constexpr uint32_t SCROLL_PAUSE = 2000, SCROLL_STEP = 40;
@@ -192,7 +196,26 @@ void Tft::begin(const DisplayConfig &config) {
     lcd_->setTextDatum(textdatum_t::top_left);
     sleepMinutes_ = config.sleepMinutes;
     changedAt_ = millis();
-    draw(true);
+    // Not when woken from deep sleep: then the button was pressed to scan.
+    if (config.bootLogo && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED)
+        drawSplash();
+    else
+        draw(true);
+}
+
+void Tft::drawSplash() {
+    int gap = compact_ ? 10 : 16;
+    int y = (h_ - SPLASH_LOGO_H - gap - 16) / 2;
+    lcd_->startWrite();
+    lcd_->fillScreen(BG);
+    lcd_->drawPng(SPLASH_LOGO_PNG, sizeof(SPLASH_LOGO_PNG), (w_ - SPLASH_LOGO_W) / 2, y);
+    lcd_->setFont(SMALL);
+    lcd_->setTextColor(MUTED, BG);
+    lcd_->setTextDatum(textdatum_t::top_center);
+    lcd_->drawString(FIRMWARE_VERSION, w_ / 2, y + SPLASH_LOGO_H + gap);
+    lcd_->setTextDatum(textdatum_t::top_left);
+    lcd_->endWrite();
+    splashUntil_ = millis() + SPLASH_SHOWN;
 }
 
 void Tft::wake() {
@@ -234,6 +257,8 @@ void Tft::loop() {
         // A touch on a dark screen only wakes it.
         if (asleep_)
             wake();
+        else if (splashUntil_)
+            draw(true);     // a touch on the logo skips it
         else
             touched(x, y);
         changedAt_ = millis();
@@ -341,6 +366,11 @@ String Tft::contents(Screen screen) const {
 
 void Tft::draw(bool force) {
     if (!lcd_) return;
+    if (splashUntil_) {
+        if (!force && (int32_t)(millis() - splashUntil_) < 0) return;
+        splashUntil_ = 0;
+        force = true;
+    }
     lastDraw_ = millis();
     Screen screen = current();
     String now = contents(screen);

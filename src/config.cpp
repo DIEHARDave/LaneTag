@@ -259,6 +259,7 @@ void configToJson(const Config &config, JsonObject out, bool secrets) {
     display["address"] = config.display.address;
     display["flip"] = config.display.flip;
     display["sleep"] = config.display.sleepMinutes;
+    display["boot_logo"] = config.display.bootLogo;
     out["spoolman_report"] = config.spoolmanReport;
     JsonArray printers = out["printers"].to<JsonArray>();
     for (auto &p : config.printers) {
@@ -375,6 +376,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
         next.display.address = address;
         if (!display["flip"].isNull()) next.display.flip = display["flip"].as<bool>();
         next.display.sleepMinutes = constrain(display["sleep"] | next.display.sleepMinutes, 0, 1440);
+        if (!display["boot_logo"].isNull()) next.display.bootLogo = display["boot_logo"].as<bool>();
         if (next.display.type != DisplayType::None && !isTft(next.display.type) &&
             (next.display.sda < 0 || next.display.scl < 0))
             return "the display needs its SDA and SCL pins";

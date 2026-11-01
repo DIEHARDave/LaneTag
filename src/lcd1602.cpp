@@ -33,6 +33,12 @@ void Lcd1602::row(int row, const String &text) {
     for (int i = 0; i < COLS; i++) send(i < (int)text.length() ? (uint8_t)text[i] : ' ', RS);
 }
 
+void Lcd1602::glyph(uint8_t code, const uint8_t rows[8]) {
+    if (!bus_) return;
+    command(0x40 | (code & 7) << 3);
+    for (int i = 0; i < 8; i++) send(rows[i], RS);
+}
+
 void Lcd1602::power(bool on) {
     if (!bus_) return;
     backlight_ = on ? BACKLIGHT : 0;

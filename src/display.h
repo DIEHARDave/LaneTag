@@ -22,6 +22,7 @@ struct DisplayConfig {
     uint8_t address = 0x3C;     // 7-bit; 0x3D on some modules; LCDs 0x27 or 0x3F
     bool flip = false;          // turned 180 degrees (not the LCD)
     int sleepMinutes = 10;      // screen off after this long without a change; 0: never
+    bool bootLogo = true;       // the logo (TFT) or name (OLED, LCD) for a few seconds at power-on
 };
 
 const char *displayTypeName(DisplayType type);
@@ -51,6 +52,8 @@ public:
 
 private:
     void draw(bool force);
+    // "LaneTag" and the version, until splashUntil_ (or a scan).
+    void splash();
     void drawLcd(bool force);
     void renderLcd(String rows[2]);
     void render();
@@ -79,5 +82,6 @@ private:
     uint32_t scrollStart_ = 0;
     bool asleep_ = false;
     uint32_t changedAt_ = 0, lastDraw_ = 0, slotUntil_ = 0;
+    uint32_t splashUntil_ = 0;      // 0: no start-up screen showing
     int sleepMinutes_ = 0;
 };

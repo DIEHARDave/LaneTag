@@ -4,11 +4,13 @@
 #include <WiFi.h>
 #include <Wire.h>
 #include <driver/gpio.h>
+#include <esp_sleep.h>
 #include <soc/soc_caps.h>
 
 #include "app.h"
 #include "lcd1602.h"
 #include "tft.h"
+#include "version.h"
 
 namespace {
 
@@ -19,6 +21,7 @@ TwoWire *bus = nullptr;
 // A scan stays on the screen this long (unless it waits for a slot).
 constexpr uint32_t SCAN_SHOWN = 5 * 60 * 1000;
 constexpr uint32_t SLOT_SHOWN = 3000;
+constexpr uint32_t SPLASH_SHOWN = 3000;
 constexpr uint32_t DRAW_INTERVAL = 200;
 constexpr int WIDTH = 128;
 // A title too long even in the smallest font scrolls: still for a moment,
@@ -35,6 +38,18 @@ const uint8_t *const MEDIUM = u8g2_font_6x10_tf;
 const uint8_t *const LARGE = u8g2_font_helvB12_tf;
 const uint8_t *const TITLE_SMALLER = u8g2_font_helvB10_tf;
 const uint8_t *const HUGE_ = u8g2_font_helvB24_tf;
+const uint8_t *const WORDMARK = u8g2_font_helvB18_tr;
+
+// A spool side on, for the LCD's start-up screen: two flanges and the
+// filament between them.
+const uint8_t LCD_SPOOL[8] = {0b11111, 0b01110, 0b01110, 0b01110, 0b01110, 0b01110, 0b11111, 0b00000};
+
+// The release part of the version: "v0.2.0-2" for "v0.2.0-2-g2d9f574-dirty".
+String shortVersion() {
+    String v = FIRMWARE_VERSION;
+    int g = v.indexOf("-g");
+    return g > 0 ? v.substring(0, g) : v;
+}
 
 uint8_t byteCallback(u8x8_t *u8x8, uint8_t msg, uint8_t count, void *data) {
     switch (msg) {
@@ -167,10 +182,12 @@ void Display::begin(const DisplayConfig &config, const ReaderPins &reader) {
     }
     sleepMinutes_ = config.sleepMinutes;
     changedAt_ = millis();
+    // Not when woken from deep sleep: then the button was pressed to scan.
+    bool bootLogo = config.bootLogo && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED;
     if (config.type == DisplayType::Lcd1602) {
         lcd_ = new Lcd1602();
         lcd_->begin(bus, config.address);
-        draw(true);
+        bootLogo ? splash() : draw(true);
         return;
     }
     u8g2_ = new U8G2();
@@ -183,7 +200,46 @@ void Display::begin(const DisplayConfig &config, const ReaderPins &reader) {
     u8g2_->begin();
     u8g2_->enableUTF8Print();
     memset(shown_, 0xFF, sizeof(shown_));
-    draw(true);
+    bootLogo ? splash() : draw(true);
+}
+
+void Display::splash() {
+    splashUntil_ = millis() + SPLASH_SHOWN;
+    if (lcd_) {
+        lcd_->glyph(1, LCD_SPOOL);
+        lcd_->row(0, "   LaneTag ");
+        String version = shortVersion().substring(0, Lcd1602::COLS);
+        lcd_->row(1, String("        ").substring(0, (Lcd1602::COLS - version.length()) / 2) + version);
+        lcdShown_[0] = lcdShown_[1] = "";
+        return;
+    }
+    // A spool face, then "Lane" and "Tag" white on black (the logo's
+    // orange part), in the middle; the version under them.
+    u8g2_->clearBuffer();
+    u8g2_->setFont(WORDMARK);
+    int lane = u8g2_->getStrWidth("Lane"), tag = u8g2_->getStrWidth("Tag");
+    constexpr int R = 13, GAP = 6, PAD = 3, CY = 30;
+    int x = (WIDTH - (2 * R + 1 + GAP + lane + 1 + tag + 2 * PAD)) / 2;
+    int cx = x + R;
+    u8g2_->drawCircle(cx, CY, R);
+    u8g2_->drawDisc(cx, CY, R - 3);
+    u8g2_->setDrawColor(0);
+    u8g2_->drawDisc(cx, CY, 5);
+    u8g2_->setDrawColor(1);
+    u8g2_->drawCircle(cx, CY, 5);
+    u8g2_->drawDisc(cx, CY, 2);
+    x += 2 * R + 1 + GAP;
+    u8g2_->drawStr(x, CY + 9, "Lane");
+    x += lane + 1;
+    u8g2_->drawRBox(x, CY - 12, tag + 2 * PAD, 26, 3);
+    u8g2_->setDrawColor(0);
+    u8g2_->drawStr(x + PAD, CY + 9, "Tag");
+    u8g2_->setDrawColor(1);
+    u8g2_->setFont(SMALL);
+    String version = shortVersion();
+    u8g2_->drawStr((WIDTH - u8g2_->getStrWidth(version.c_str())) / 2, 63, version.c_str());
+    u8g2_->sendBuffer();
+    memset(shown_, 0xFF, sizeof(shown_));
 }
 
 String Display::error() const {
@@ -241,6 +297,11 @@ void Display::loop() {
 }
 
 void Display::draw(bool force) {
+    if (splashUntil_) {
+        if (!force && (int32_t)(millis() - splashUntil_) < 0) return;
+        splashUntil_ = 0;
+        force = true;
+    }
     if (lcd_) return drawLcd(force);
     if (!u8g2_) return;
     lastDraw_ = millis();

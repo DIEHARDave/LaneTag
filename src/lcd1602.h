@@ -16,6 +16,8 @@ public:
     void row(int row, const String &text);
     // Display and backlight on or off.
     void power(bool on);
+    // A custom character (code 0-7): eight rows of five pixels.
+    void glyph(uint8_t code, const uint8_t rows[8]);
     // Writes the backpack did not acknowledge (wiring, pull-ups).
     uint32_t errors() const { return errors_; }
 

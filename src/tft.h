@@ -32,6 +32,8 @@ private:
     enum class Screen : uint8_t { Setup, NoReader, Idle, Scan };
 
     void draw(bool force);
+    // The full logo and the version, until splashUntil_ (or a touch or scan).
+    void drawSplash();
     // What is on the screen, as text: redraw only when it changes.
     String contents(Screen screen) const;
     Screen current() const;
@@ -64,6 +66,7 @@ private:
     bool asleep_ = false;
     bool touchDown_ = false;
     uint32_t changedAt_ = 0, lastDraw_ = 0, lastTouch_ = 0;
+    uint32_t splashUntil_ = 0;                  // 0: no logo on the screen
     int sleepMinutes_ = 0;
 };
 
