@@ -200,9 +200,12 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
   <div class="card">
     <h2>Firmware</h2>
     <div class="muted" id="version"></div>
-    <div class="muted"><span id="releaseLine"></span> · <a href="#" id="recheck">Check again</a></div>
+    <div class="muted"><a href="https://github.com/DIEHARDave/LaneTag" target="_blank" rel="noopener">LaneTag on GitHub</a> · <a href="https://github.com/DIEHARDave/LaneTag/releases" target="_blank" rel="noopener">all releases</a> (download a .bin there and upload it below)</div>
+    <div class="muted" id="releaseLine"></div>
     <div class="banner hidden" id="newRelease"></div>
-    <label for="fw">Firmware file (lanetag-&lt;version&gt;-<span id="fwBoard">&lt;board&gt;</span>.bin from the <a href="https://github.com/DIEHARDave/LaneTag/releases" target="_blank" rel="noopener">releases</a>, not the -factory one; or .pio/build/&lt;board&gt;/firmware.bin)</label>
+    <div class="actions"><button class="btn primary" id="checkUpdate">Check for updates</button></div>
+    <div class="msg hidden" id="otaMsg"></div>
+    <label for="fw">Or upload a firmware file (lanetag-&lt;version&gt;-<span id="fwBoard">&lt;board&gt;</span>.bin from the <a href="https://github.com/DIEHARDave/LaneTag/releases" target="_blank" rel="noopener">releases</a>, not the -factory one; or .pio/build/&lt;board&gt;/firmware.bin)</label>
     <input id="fw" type="file" accept=".bin">
     <div class="actions"><button class="btn" id="upload">Upload</button><button class="btn danger" id="restart">Restart</button></div>
     <div class="msg" id="fwMsg"></div>
@@ -268,17 +271,18 @@ function renderHeader() {
     (status.wifi_error ? ` Could not join ${status.ssid}: ${status.wifi_error}.` : "");
   $("version").textContent = `Version ${status.version} · ${status.board} build`;
   $("fwBoard").textContent = status.board;
-  checkRelease();
 }
 
-// The newest release on GitHub, asked by the browser (the reader itself
-// needn't reach the internet). Once per page load, and on "Check again".
-let releaseChecked = false;
-async function checkRelease(again) {
-  if (releaseChecked && !again) return;
-  releaseChecked = true;
-  const line = $("releaseLine"), b = $("newRelease");
+// The newest release on GitHub, asked by the browser on "Check for updates".
+// When it is newer, the button installs it: the reader downloads the file
+// from GitHub itself (/api/ota), since the browser can't hand it over.
+let update = null;
+async function checkRelease() {
+  const line = $("releaseLine"), b = $("newRelease"), btn = $("checkUpdate");
   const parse = v => (/^v?(\d+)\.(\d+)\.(\d+)/.exec(v || "") || []).slice(1).map(Number);
+  update = null;
+  btn.textContent = "Check for updates";
+  setStatus($("otaMsg"), "");
   line.textContent = "Checking GitHub for releases…";
   b.classList.add("hidden");
   let rel;
@@ -299,10 +303,33 @@ async function checkRelease(again) {
   line.innerHTML = `Latest release: ${link}`;
   const asset = (rel.assets || []).find(a => a.name.endsWith(`-${status.board}.bin`));
   b.innerHTML = `Update available: ${link}` +
-    (asset ? ` · <a href="${esc(asset.browser_download_url)}">download ${esc(asset.name)}</a>, then upload it below` : "");
+    (asset ? ` · or <a href="${esc(asset.browser_download_url)}">download ${esc(asset.name)}</a> and upload it below` : ` (no ${esc(status.board)} file in it)`);
   b.classList.remove("hidden");
+  if (!asset) return;
+  update = {tag: rel.tag_name, url: asset.browser_download_url, sha256: (asset.digest || "").replace(/^sha256:/, "")};
+  btn.textContent = "Install update";
 }
-$("recheck").onclick = e => { e.preventDefault(); checkRelease(true); };
+
+async function installUpdate() {
+  if (!confirm(`Install ${update.tag}? The reader downloads it from GitHub (it needs internet access) and restarts; settings are kept.`)) return;
+  const btn = $("checkUpdate"), msg = $("otaMsg");
+  btn.disabled = true;
+  let r = await api("/api/ota", {url: update.url, sha256: update.sha256});
+  while (r.ok && r.running) {
+    setStatus(msg, `Downloading ${update.tag}… ${r.progress}%`);
+    await new Promise(res => setTimeout(res, 1000));
+    // Gone after the whole file: it is already restarting.
+    try { r = await api("/api/ota"); } catch (e) { r = r.progress >= 99 ? {ok: true, done: true} : {ok: false, error: "Lost the reader"}; }
+  }
+  if (r.ok && r.done) {
+    setStatus(msg, "Updated; restarting…", true);
+    setTimeout(() => location.reload(), 10000);
+    return;
+  }
+  setStatus(msg, r.error || "The update failed", false);
+  btn.disabled = false;
+}
+$("checkUpdate").onclick = () => update ? installUpdate() : checkRelease();
 
 function renderTarget() {
   const sel = $("target");

@@ -273,8 +273,13 @@ per board, named after the PlatformIO builds below:
   LaneTag. Upload it under **Settings > Firmware**; settings are kept.
 
 The web page shows the running version and board under **Settings >
-Firmware**, and says when a newer release is out (your browser asks GitHub;
-the reader doesn't need internet access for that).
+Firmware**. **Check for updates** asks GitHub for the latest release (your
+browser asks, so this works without internet access on the reader). When a
+newer one is out the button turns into **Install update**: the reader then
+downloads its board's `.bin` from GitHub itself, checks the file's SHA-256
+against the release and restarts into it, with settings kept. That needs
+internet access on the reader; without it, download the file and upload it
+under the same card.
 
 ### Building it yourself
 
@@ -730,7 +735,9 @@ The page uses a small JSON API, also usable from scripts: `GET /api/status`
 `POST /api/test`, `POST /api/rescan`, `GET /api/networks`,
 `POST /api/discover` (start a printer search) and `GET /api/discover` (its
 progress and the printers found so far),
-`POST /api/restart` and `POST /update` (firmware). The protocol between the
+`POST /api/restart`, `POST /update` (firmware upload), and `POST /api/ota
+{"url": release file, "sha256": hex}` (install a release from GitHub) with
+`GET /api/ota` (its progress). The protocol between the
 reader and FF_NFC is in FF_NFC's
 [docs/remote-api.md](https://github.com/DIEHARDave/FF_NFC/blob/main/docs/remote-api.md).
 

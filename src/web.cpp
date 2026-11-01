@@ -7,6 +7,7 @@
 #include "app.h"
 #include "decoders.h"
 #include "discovery.h"
+#include "ota.h"
 #include "version.h"
 #include "web_page.h"
 
@@ -334,8 +335,35 @@ void handleRestart() {
     restartSoon();
 }
 
+void handleOtaStart() {
+    if (!authorized()) return;
+    JsonDocument doc;
+    if (!readBody(doc)) return;
+    String error = otaStart(doc["url"] | "", doc["sha256"] | "");
+    if (error.length()) {
+        sendError(409, error);
+        return;
+    }
+    JsonDocument reply;
+    otaToJson(reply.to<JsonObject>());
+    reply["ok"] = true;
+    sendJson(200, reply);
+}
+
+void handleOtaState() {
+    if (!authorized()) return;
+    JsonDocument reply;
+    otaToJson(reply.to<JsonObject>());
+    reply["ok"] = true;
+    sendJson(200, reply);
+}
+
 void handleUpdateDone() {
     if (!authorized()) return;
+    if (otaRunning()) {
+        sendError(409, "an update from GitHub is running");
+        return;
+    }
     bool ok = !Update.hasError();
     JsonDocument reply;
     reply["ok"] = ok;
@@ -346,6 +374,8 @@ void handleUpdateDone() {
 
 void handleUpdateUpload() {
     if (app.config.uiPassword.length() && !server.authenticate("admin", app.config.uiPassword.c_str())) return;
+    // Update serves one firmware at a time.
+    if (otaRunning()) return;
     HTTPUpload &upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
         log_i("firmware update: %s", upload.filename.c_str());
@@ -389,6 +419,8 @@ void webBegin() {
     server.on("/api/discover", HTTP_POST, handleDiscover);
     server.on("/api/discover", HTTP_GET, handleFound);
     server.on("/api/restart", HTTP_POST, handleRestart);
+    server.on("/api/ota", HTTP_POST, handleOtaStart);
+    server.on("/api/ota", HTTP_GET, handleOtaState);
     server.on("/update", HTTP_POST, handleUpdateDone, handleUpdateUpload);
     server.onNotFound(handleNotFound);
     server.begin();
