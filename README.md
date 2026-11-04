@@ -48,8 +48,9 @@ printers and their IP addresses, and how each printer is reached.
 > builds for ESP32, ESP32-S3, ESP32-C3, ESP32-C6 and ESP32-C5 without warnings. Its decoders and
 > MIFARE key derivation match [FF_NFC](https://github.com/DIEHARDave/FF_NFC)'s
 > (identical results for every tag in FF_NFC's decoder tests, identical
-> Bambu, Creality and Snapmaker keys). Not yet tried: Bambu and Creality
-> tags, a factory-fresh printer, and
+> Bambu, Creality and Snapmaker keys). **Bambu Lab RFID tags** (MIFARE
+> Classic, keys derived from the UID) are tested and read correctly. Not
+> yet tried: Creality tags, a factory-fresh printer, and
 > the **Zmod basic** method. The PN532 works over I2C and HSU (ESP32-C3 and
 > classic ESP32), and the RC522 read tags on an ESP32-C3. On a **CYD**
 > (ESP32-2432S028, ST7789 version) with a PN532 over HSU, scans reach an
@@ -709,7 +710,8 @@ on GPIO 2 (SDA) and 3 (SCL). The WS2812 is on GPIO 8 here too.
 | OpenPrintTag (ISO 15693) | yes, with a PN5180 (the PN532 and RC522 cannot read ISO 15693) | yes |
 
 The reader derives the Bambu, Creality and Snapmaker MIFARE keys from each
-tag's UID, as FF_NFC does, so those tags are read completely. With the
+tag's UID, as FF_NFC does, so those tags are read completely. Reading real
+Bambu Lab spool tags is tested and works. With the
 FF_NFC method the raw read is decoded on the printer, so every format
 FF_NFC supports works, including ones the reader does not decode itself.
 
