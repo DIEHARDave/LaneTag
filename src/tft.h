@@ -48,7 +48,7 @@ private:
     void touched(int x, int y);
     bool readTouch(int &x, int &y);
     int slotWidth() const { return w_ / 5; }    // Ask, 1-4
-    bool startScroll(const String &text, int x, int y, int width);
+    bool startScroll(const String &text, int x, int y, int width, uint32_t color = 0xFFFFFFu);
     void drawScroll();
 
     class CydLcd *lcd_ = nullptr;
@@ -61,6 +61,8 @@ private:
     int w_ = 320, h_ = 240;
     int header_ = 40, footer_ = 192;            // footer: top of the slot buttons
     bool compact_ = false;                      // 172 high: tighter rows
+    bool tiny_ = false;                         // 135 high: smaller still
+    int margin() const { return tiny_ ? 6 : 14; }  // left edge of the text
     bool touch_ = true;
     bool flip_ = false;
     bool asleep_ = false;
