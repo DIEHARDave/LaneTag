@@ -33,6 +33,7 @@
 #include <Arduino.h>
 #include <ESPmDNS.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 
 #include "app.h"
 #include "decoders.h"
@@ -65,6 +66,11 @@ constexpr uint32_t WIFI_RETRY_IN_USE = 2 * 60 * 1000;
 constexpr uint32_t WIFI_LOST = 60 * 1000;
 uint32_t lastWifiTry = 0;
 uint32_t wifiLostAt = 0;
+// Access points of the home network this much weaker than the strongest one
+// heard are skipped: a far mesh node can keep turning the reader away while
+// a near one would let it in.
+constexpr int WEAK_AP_MARGIN = 10;
+int8_t minRssi = -127;      // from the scan at start-up; -127: take any
 
 // The button steps the active printer's slot: ask, 1 ... its slot count, ask.
 // A first press only shows the slot on the LED (one blink per slot number,
@@ -140,6 +146,30 @@ void startAccessPoint() {
     log_i("setup access point %s at %s", name, WiFi.softAPIP().toString().c_str());
 }
 
+// The weakest signal worth joining: some margin below the strongest access
+// point of the home network, or -127 when none is heard.
+int8_t weakestUsable() {
+    int best = -127;
+    int n = WiFi.scanNetworks(false, true);
+    for (int i = 0; i < n; i++)
+        if (WiFi.SSID(i) == app.config.wifiSsid && WiFi.RSSI(i) > best) best = WiFi.RSSI(i);
+    WiFi.scanDelete();
+    log_i("strongest %s access point: %d dBm", app.config.wifiSsid.c_str(), best);
+    return best == -127 ? -127 : best - WEAK_AP_MARGIN;
+}
+
+// WiFi.begin() with the weak access points left out. The Arduino core always
+// sets "any signal", so the threshold goes in between setting up and joining.
+void joinWifi() {
+    WiFi.begin(app.config.wifiSsid.c_str(), app.config.wifiPass.c_str(), 0, nullptr, false);
+    wifi_config_t conf;
+    if (esp_wifi_get_config(WIFI_IF_STA, &conf) == ESP_OK) {
+        conf.sta.threshold.rssi = minRssi;
+        esp_wifi_set_config(WIFI_IF_STA, &conf);
+    }
+    esp_wifi_connect();
+}
+
 void startWifi() {
     WiFi.persistent(false);
     WiFi.setHostname(app.config.hostname.c_str());
@@ -150,7 +180,14 @@ void startWifi() {
     WiFi.mode(WIFI_STA);
     setWifiPower();
     WiFi.setAutoReconnect(true);
-    WiFi.begin(app.config.wifiSsid.c_str(), app.config.wifiPass.c_str());
+    // A mesh has several access points with one name. By default the ESP32
+    // joins the first one it finds (from channel 1 up), which may be a far
+    // one that never answers (AUTH_EXPIRE); scan them all and take the
+    // strongest, skipping weak ones. Kept for every later join.
+    WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+    WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+    minRssi = weakestUsable();
+    joinWifi();
     uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_WAIT) {
         app.feedback.loop();
@@ -369,7 +406,8 @@ void loop() {
             app.feedback.setIdleBlink(false);
         } else if (millis() - lastWifiTry > (WiFi.softAPgetStationNum() ? WIFI_RETRY_IN_USE : WIFI_RETRY)) {
             lastWifiTry = millis();
-            WiFi.begin(app.config.wifiSsid.c_str(), app.config.wifiPass.c_str());
+            minRssi = weakestUsable();      // the signals may have changed since
+            joinWifi();
         }
     } else if (!app.apMode && app.config.wifiSsid.length()) {
         if (WiFi.status() == WL_CONNECTED) {

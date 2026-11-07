@@ -349,6 +349,13 @@ name. `python tools/release.py [board ...]` writes the same files into
    every 30 seconds (every two minutes while someone is connected to the
    setup network, since each try briefly disturbs it). The same happens
    when the reader loses your network for a minute while running.
+
+   On a mesh network (several access points with one name) the reader
+   joins the strongest one it hears and skips any more than 10 dB weaker:
+   a far node often keeps turning an ESP32 away (`AUTH_EXPIRE` in the log)
+   while a near one lets it in. If a reader still struggles to join, look
+   for "fast roaming" (802.11r) or client steering in the mesh's settings,
+   or give the readers a plain 2.4 GHz network of their own.
 3. Open the reader at **`http://lanetag-xxxx.local`** (the name is on the
    Settings tab) or its IP address from your router.
 
