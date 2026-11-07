@@ -23,6 +23,7 @@ DIST = os.path.join(ROOT, "dist")
 CHIPS = {
     "esp32dev": "esp32", "cyd": "esp32", "esp32-s3": "esp32s3", "esp32-c3": "esp32c3",
     "esp32-c6": "esp32c6", "esp32-c5": "esp32c5", "esp32-c6-lcd": "esp32c6", "esp32-c5-lcd": "esp32c5",
+    "ideaspark-lcd19": "esp32",
 }
 
 

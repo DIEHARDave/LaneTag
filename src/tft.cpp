@@ -14,7 +14,9 @@
 // The CYD's screen: HSPI, backlight on GPIO 21. The Waveshare
 // ESP32-C6-LCD-1.47's: a 172x320 ST7789 (in the middle of its 240 columns)
 // on the C6's one SPI bus, backlight on GPIO 22; the ESP32-C5-LCD-1.47 has
-// the same panel on other pins.
+// the same panel on other pins. The ideaspark ESP32 1.9" LCD: a 170x320
+// ST7789 (also in the middle of its 240 columns) on the VSPI pins, backlight
+// on GPIO 32.
 #if CONFIG_IDF_TARGET_ESP32C5
 constexpr int LCD147_SCLK = 7, LCD147_MOSI = 6, LCD147_DC = 24, LCD147_CS = 23, LCD147_RST = 26, LCD147_BL = 10;
 #else
@@ -25,11 +27,12 @@ class CydLcd : public lgfx::LGFX_Device {
 public:
     explicit CydLcd(DisplayType type) {
         bool c6 = type == DisplayType::C6Lcd147;
+        bool lcd19 = type == DisplayType::Lcd19;
         lgfx::Panel_Device *panel = type == DisplayType::CydIli9341 ? (lgfx::Panel_Device *)&ili9341_ : &st7789_;
         {
             auto c = bus_.config();
 #if CONFIG_IDF_TARGET_ESP32
-            c.spi_host = HSPI_HOST;
+            c.spi_host = lcd19 ? VSPI_HOST : HSPI_HOST;
 #else
             c.spi_host = SPI2_HOST;
 #endif
@@ -39,9 +42,9 @@ public:
             c.spi_3wire = false;
             c.use_lock = true;
             c.dma_channel = SPI_DMA_CH_AUTO;
-            c.pin_sclk = c6 ? LCD147_SCLK : 14;
-            c.pin_mosi = c6 ? LCD147_MOSI : 13;
-            c.pin_miso = c6 ? -1 : 12;
+            c.pin_sclk = lcd19 ? 18 : c6 ? LCD147_SCLK : 14;
+            c.pin_mosi = lcd19 ? 23 : c6 ? LCD147_MOSI : 13;
+            c.pin_miso = lcd19 || c6 ? -1 : 12;
             c.pin_dc = c6 ? LCD147_DC : 2;
             bus_.config(c);
             panel->setBus(&bus_);
@@ -49,22 +52,22 @@ public:
         {
             auto c = panel->config();
             c.pin_cs = c6 ? LCD147_CS : 15;
-            c.pin_rst = c6 ? LCD147_RST : -1;
+            c.pin_rst = lcd19 ? 4 : c6 ? LCD147_RST : -1;
             c.pin_busy = -1;
-            c.panel_width = c6 ? 172 : 240;
+            c.panel_width = lcd19 ? 170 : c6 ? 172 : 240;
             c.panel_height = 320;
             c.memory_width = 240;
             c.memory_height = 320;
-            c.offset_x = c6 ? 34 : 0;
-            c.readable = !c6;
-            c.invert = c6;
+            c.offset_x = lcd19 ? 35 : c6 ? 34 : 0;
+            c.readable = !c6 && !lcd19;
+            c.invert = c6 || lcd19;
             c.rgb_order = false;
             c.bus_shared = false;
             panel->config(c);
         }
         {
             auto c = light_.config();
-            c.pin_bl = c6 ? LCD147_BL : 21;
+            c.pin_bl = lcd19 ? 32 : c6 ? LCD147_BL : 21;
             c.invert = false;
             c.freq = 12000;
             c.pwm_channel = c6 ? 0 : 7;     // the C6 and C5 have six channels
@@ -183,7 +186,7 @@ bool scanShown() {
 void Tft::begin(const DisplayConfig &config) {
     lcd_ = new CydLcd(config.type);
     lcd_->init();
-    touch_ = config.type != DisplayType::C6Lcd147;
+    touch_ = config.type != DisplayType::C6Lcd147 && config.type != DisplayType::Lcd19;
     if (touch_) touchBegin();
     flip_ = config.flip;
     lcd_->setRotation(flip_ ? 3 : 1);

@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env: [esp32dev, cyd, esp32-s3, esp32-c3, esp32-c6, esp32-c5, esp32-c6-lcd, esp32-c5-lcd]
+        env: [esp32dev, cyd, esp32-s3, esp32-c3, esp32-c6, esp32-c5, esp32-c6-lcd, esp32-c5-lcd, ideaspark-lcd19]
     steps:
       - uses: actions/checkout@v4
         with:

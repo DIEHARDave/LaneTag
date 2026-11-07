@@ -36,8 +36,19 @@ constexpr int DEFAULT_LED = 8;
 constexpr bool DEFAULT_LED_LOW = false;
 constexpr int DEFAULT_BUTTON = 9;
 const int SCREEN_PINS[] = {6, 7, 14, 15, 21, 22};
+#elif defined(BOARD_LCD19)
+// ideaspark ESP32 1.9" LCD: the screen takes 2, 4, 15, 18, 23 and 32 (and the
+// VSPI bus, so the reader is a PN532). The PN532 goes on GPIO 16 and 17 in HSU
+// mode. No LED of its own: GPIO 2 is the screen's.
+constexpr int DEFAULT_SDA = 21, DEFAULT_SCL = 22, DEFAULT_RX = 16, DEFAULT_TX = 17;
+constexpr int DEFAULT_SCK = -1, DEFAULT_MISO = -1, DEFAULT_MOSI = -1, DEFAULT_SS = -1, DEFAULT_RST = -1;
+constexpr int DEFAULT_BUSY = -1;
+constexpr int DEFAULT_LED = -1;
+constexpr bool DEFAULT_LED_LOW = false;
+constexpr int DEFAULT_BUTTON = 0;
+const int SCREEN_PINS[] = {2, 4, 15, 18, 23, 32};
 #endif
-#if defined(BOARD_LCD147)
+#if defined(BOARD_LCD147) || defined(BOARD_LCD19)
 const char *const READER_PIN_KEYS[] = {"sda", "scl", "rx", "tx", "sck", "miso", "mosi", "ss", "rst", "busy"};
 
 bool isScreenPin(int pin) {
@@ -125,6 +136,10 @@ void setDefaults(Config &config) {
     config.reader.bus = Pn532Bus::UART;
     config.display.type = DisplayType::C6Lcd147;
     config.led.type = LedType::Ws2812;
+#endif
+#ifdef BOARD_LCD19
+    config.reader.bus = Pn532Bus::UART;
+    config.display.type = DisplayType::Lcd19;
 #endif
 #ifdef BOARD_CYD
     config.reader.bus = Pn532Bus::UART;
@@ -326,7 +341,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
             return next.reader.chip == ReaderChip::RC522 ? "the RC522 needs its SCK, MISO, MOSI and SDA (SS) pins"
                                                          : "the PN5180 needs its SCK, MISO, MOSI and NSS pins";
         if (next.reader.chip == ReaderChip::PN5180 && next.reader.busy < 0) return "the PN5180 needs its BUSY pin";
-#ifdef BOARD_LCD147
+#if defined(BOARD_LCD147) || defined(BOARD_LCD19)
         if (spi) return "the screen has this board's SPI bus; use a PN532 (HSU or I2C)";
         for (int p : {next.reader.sda, next.reader.scl, next.reader.rx, next.reader.tx})
             if (isScreenPin(p)) return "GPIO " + String(p) + " is the screen's on this board";
@@ -358,6 +373,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
                             : type == "cyd"        ? DisplayType::CydIli9341
                             : type == "cyd-st7789" ? DisplayType::CydSt7789
                             : type == "c6-lcd147"  ? DisplayType::C6Lcd147
+                            : type == "lcd19"      ? DisplayType::Lcd19
                             : type == "lcd1602"    ? DisplayType::Lcd1602
                                                    : DisplayType::None;
 #ifndef HAS_TFT
@@ -365,7 +381,11 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
 #elif defined(BOARD_LCD147)
         if (isTft(next.display.type) && next.display.type != DisplayType::C6Lcd147)
             return "this firmware drives only the board's own 1.47\" screen";
+#elif defined(BOARD_LCD19)
+        if (isTft(next.display.type) && next.display.type != DisplayType::Lcd19)
+            return "this firmware drives only the board's own 1.9\" screen";
 #else
+        if (next.display.type == DisplayType::Lcd19) return "the 1.9\" screen needs the ideaspark-lcd19 build";
         if (next.display.type == DisplayType::C6Lcd147)
             return "the 1.47\" screen needs the esp32-c6-lcd or esp32-c5-lcd build";
 #endif
@@ -577,12 +597,13 @@ void loadConfig(Config &config) {
         log_w("stored settings are not valid JSON; using defaults");
         return;
     }
-#ifdef BOARD_LCD147
-    // Saved by the plain ESP32-C6 or C5 firmware, whose reader pins can be
+#if defined(BOARD_LCD147) || defined(BOARD_LCD19)
+    // Saved by the plain firmware for this chip, whose reader pins can be
     // this board's screen pins (I2C there crashes the I2C driver): back to
     // the defaults for those.
     for (const char *key : READER_PIN_KEYS)
         if (isScreenPin(doc["reader"][key] | -1)) doc["reader"].remove(key);
+    if (isScreenPin(doc["led_pin"] | -1)) doc.remove("led_pin");
 #endif
     bool restart;
     String error = configFromJson(config, doc.as<JsonObjectConst>(), restart);

@@ -132,6 +132,8 @@ work too.
 * Or a **Waveshare ESP32-C6-LCD-1.47** or **ESP32-C5-LCD-1.47**: a small
   board with a 1.47" color screen, see
   [The Waveshare ESP32-C6-LCD-1.47 and ESP32-C5-LCD-1.47](#the-waveshare-esp32-c6-lcd-147-and-esp32-c5-lcd-147).
+* Or an **ideaspark ESP32 1.9" LCD**: a classic ESP32 with a 1.9" color
+  screen, see [The ideaspark ESP32 1.9" LCD](#the-ideaspark-esp32-19-lcd).
 
 ### Wiring
 
@@ -296,6 +298,7 @@ pio run -e esp32-c5 -t upload      # ESP32-C5
 pio run -e cyd -t upload           # ESP32-2432S028 (CYD)
 pio run -e esp32-c6-lcd -t upload  # Waveshare ESP32-C6-LCD-1.47
 pio run -e esp32-c5-lcd -t upload  # Waveshare ESP32-C5-LCD-1.47
+pio run -e ideaspark-lcd19 -t upload  # ideaspark ESP32 1.9" LCD
 pio device monitor                 # log output
 ```
 
@@ -694,6 +697,18 @@ On the **ESP32-C5-LCD-1.47** the screen uses GPIO 6, 7, 10, 23, 24 and 26.
 The PN532 goes on the header's RXD and TXD pins: PN532 TXD to **RXD**
 (GPIO 12), RXD to **TXD** (GPIO 11), VCC to 3V3 and GND to GND, or over I2C
 on GPIO 2 (SDA) and 3 (SCL). The WS2812 is on GPIO 8 here too.
+
+### The ideaspark ESP32 1.9" LCD
+
+A classic ESP32 (WROOM-32) with a 1.9" 170x320 ST7789 screen and a CH340
+USB port. The `ideaspark-lcd19` build shows the same screens as the 1.47"
+boards above, turned sideways and without touch: the printer and the fixed
+slot are changed with the BOOT button or on the web page. The screen uses
+GPIO 2, 4, 15, 18, 23 and 32 and the VSPI bus, so the reader is a PN532:
+in HSU mode, PN532 TXD to GPIO 16, RXD to GPIO 17, VCC to 3V3 and GND to
+GND, or over I2C (GPIO 21 SDA, 22 SCL by default). The board has no LED of
+its own (GPIO 2 is the screen's), so add one on a free pin if you want the
+scan colors.
 
 ## Tag formats
 

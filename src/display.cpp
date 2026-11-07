@@ -120,6 +120,7 @@ const char *displayTypeName(DisplayType type) {
     case DisplayType::CydIli9341: return "cyd";
     case DisplayType::CydSt7789: return "cyd-st7789";
     case DisplayType::C6Lcd147: return "c6-lcd147";
+    case DisplayType::Lcd19: return "lcd19";
     case DisplayType::Lcd1602: return "lcd1602";
     default: return "none";
     }
