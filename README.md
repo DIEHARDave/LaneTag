@@ -100,8 +100,8 @@ work too.
 
 * An **ESP32** board: classic ESP32 (DevKit, WROOM-32), ESP32-S3,
   ESP32-C3 (SuperMini works), ESP32-C6 (DevKitC / SuperMini) or ESP32-C5
-  (Wi-Fi on 2.4 and 5 GHz; the plain C6 and C5 builds boot, but only the
-  Waveshare 1.47" boards below have been tried with a reader).
+  (Wi-Fi on 2.4 and 5 GHz). See [Tested boards and screens](#tested-boards-and-screens)
+  for what has run on real hardware.
 * A reader module, one of:
   * a **PN532**, e.g. the common red or blue "PN532 NFC RFID V3" boards or
     Elechouse's (good range, the tested one);
@@ -135,6 +135,22 @@ work too.
 * Or an **ideaspark ESP32 1.9" LCD** or **1.14" LCD**: a classic ESP32 with
   a small color screen, see
   [The ideaspark ESP32 1.9" and 1.14" LCD](#the-ideaspark-esp32-19-and-114-lcd).
+
+### Tested boards and screens
+
+| Board | Build | Screen | Reader tried on it |
+|---|---|---|---|
+| ESP32-C3 SuperMini | `esp32-c3` | SSD1306 0.96" OLED, 16x2 I2C LCD | PN532 (I2C and HSU), RC522 |
+| Classic ESP32 (ideaspark 0.96" OLED V3.0) | `esp32dev` | its SSD1306 OLED | PN532 (HSU) |
+| ESP32-2432S028 (CYD, ST7789 version) | `cyd` | 2.8" 320x240 touch | PN532 (HSU) |
+| Waveshare ESP32-C5-LCD-1.47 | `esp32-c5-lcd` | 1.47" 172x320 | PN532 (HSU) |
+| Waveshare ESP32-C6-LCD-1.47 | `esp32-c6-lcd` | 1.47" 172x320 | none yet |
+| ideaspark ESP32 1.9" LCD | `ideaspark-lcd19` | 1.9" 170x320 | none yet |
+| ideaspark ESP32 1.14" LCD | `ideaspark-lcd114` | 1.14" 135x240 | none yet |
+| ESP32-C6 DevKit / SuperMini | `esp32-c6` | none | none yet (boots, Wi-Fi works) |
+
+The ESP32-S3 build and the SH1106 OLED and PN5180 drivers have not been
+run on hardware yet. Reports of other boards are welcome.
 
 ### Wiring
 
