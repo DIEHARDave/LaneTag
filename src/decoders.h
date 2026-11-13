@@ -3,8 +3,7 @@
 //
 // The device decodes for the stock-firmware and "Zmod basic" methods and
 // for its own web page. With the FF_NFC method the printer plugin gets
-// the raw read and decodes it itself, with every format it knows
-// (OpenTag3D and TigerTag are only decoded there).
+// the raw read and decodes it itself, with every format it knows.
 #pragma once
 
 #include <ArduinoJson.h>

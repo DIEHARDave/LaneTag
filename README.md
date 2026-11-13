@@ -748,15 +748,16 @@ active buzzer.
 | Creality (MIFARE Classic) | yes | yes |
 | Snapmaker U1 (MIFARE Classic) | yes | yes |
 | SpoolEase, Anycubic, Elegoo, Qidi | yes | yes |
+| OpenTag3D (NDEF) | yes | yes |
+| TigerTag (NTAG, offline ID tables) | yes | yes |
 | Simple text (`PLA:FF0000`, JSON) | yes | yes |
-| TigerTag, OpenTag3D | no | yes |
 | OpenPrintTag (ISO 15693) | yes, with a PN5180 (the PN532 and RC522 cannot read ISO 15693) | yes |
 
 The reader derives the Bambu, Creality and Snapmaker MIFARE keys from each
 tag's UID, as FF_NFC does, so those tags are read completely. Reading real
 Bambu Lab spool tags is tested and works. With the
-FF_NFC method the raw read is decoded on the printer, so every format
-FF_NFC supports works, including ones the reader does not decode itself.
+FF_NFC method the raw read is decoded on the printer, with FF_NFC's own
+decoders.
 
 ## Notes
 
