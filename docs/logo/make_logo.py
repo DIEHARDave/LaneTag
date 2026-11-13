@@ -282,4 +282,47 @@ open(OUT + "/lanetag-logo-dark.svg", "w", encoding="utf-8").write(doc(W, 400, "\
 sp2 = Spool(150, 200, 112, 150, (80, -6), (11, -1))
 open(OUT + "/lanetag-mark.svg", "w", encoding="utf-8").write(
     doc(400, 400, f'<g transform="translate(36 0)">{spool_svg(sp2, "mk")}</g>', "LaneTag"))
-print("width", W)
+
+# stacked dark variant: wordmark centred under the spool + reader icon
+def icon_bounds():
+    pts = []
+    # (centre, angle, width, top offset, height); the card includes its cable plug
+    for (cx, cy), deg, w, top, h in ((CARD_C, CARD_DEG, 112, -56, 126), (ESP_C, ESP_DEG, 76, -52, 104)):
+        x0, y0 = cx - w / 2, cy + top
+        pts += [rot(x, y, cx, cy, deg) for x in (x0, x0 + w) for y in (y0, y0 + h)]
+    # back flange (rightmost/topmost), front face + rim (bottom)
+    pts += [(292 + 112, 194 - 150), (212 - 112, 200 + 150), (223, 349 + 1)]
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    return min(xs) - 2, min(ys) - 2, max(xs) + 2, max(ys) + 2
+
+
+def ink_bounds(text, size):
+    from fontTools.pens.boundsPen import BoundsPen
+    font = TTFont(FONT)
+    gs, cmap = font.getGlyphSet(), font.getBestCmap()
+    s = size / font["head"].unitsPerEm
+    pen_x, box = 0, None
+    for ch in text:
+        g = gs[cmap[ord(ch)]]
+        bp = BoundsPen(gs)
+        g.draw(TransformPen(bp, (s, 0, 0, -s, pen_x, 0)))
+        if bp.bounds:
+            b = bp.bounds
+            box = b if box is None else (min(box[0], b[0]), min(box[1], b[1]), max(box[2], b[2]), max(box[3], b[3]))
+        pen_x += g.width * s - 0.01 * size
+    return box  # relative to (pen start, baseline)
+
+
+ix0, iy0, ix1, iy1 = icon_bounds()
+WM_SIZE, PAD, GAP = 112, 24, 28
+bx0, by0, bx1, by1 = ink_bounds("LaneTag", WM_SIZE)
+SW = math.ceil(max(ix1 - ix0, bx1 - bx0) + 2 * PAD)
+icon_dx = SW / 2 - (ix0 + ix1) / 2
+icon_dy = PAD - iy0
+base = PAD + (iy1 - iy0) + GAP - by0
+wm_st, _ = wordmark([("Lane", "#eef2f6"), ("Tag", ORANGE)], SW / 2 - (bx0 + bx1) / 2, base, WM_SIZE)
+SH = math.ceil(base + by1 + PAD)
+open(OUT + "/lanetag-logo-stacked-dark.svg", "w", encoding="utf-8").write(
+    doc(SW, SH, f'<g transform="translate({f(icon_dx)} {f(icon_dy)})">\n' + "\n".join([spool, hw]) + "\n</g>\n" + wm_st,
+        "LaneTag"))
+print("width", W, "stacked", SW, SH)
