@@ -748,10 +748,13 @@ active buzzer.
 | Creality (MIFARE Classic) | yes | yes |
 | Snapmaker U1 (MIFARE Classic) | yes | yes |
 | SpoolEase, Anycubic, Elegoo, Qidi | yes | yes |
-| OpenTag3D (NDEF) | yes | yes |
-| TigerTag (NTAG, offline ID tables) | yes | yes |
+| OpenTag3D (NDEF) | yes, needs testing | yes |
+| TigerTag (NTAG, offline ID tables) | yes, needs testing | yes |
 | Simple text (`PLA:FF0000`, JSON) | yes | yes |
 | OpenPrintTag (ISO 15693) | yes, with a PN5180 (the PN532 and RC522 cannot read ISO 15693) | yes |
+
+The reader's OpenTag3D and TigerTag decoders are ported from FF_NFC but
+have not been tried with real tags yet; reports either way are welcome.
 
 The reader derives the Bambu, Creality and Snapmaker MIFARE keys from each
 tag's UID, as FF_NFC does, so those tags are read completely. Reading real
