@@ -3,6 +3,9 @@
 #include "keys.h"
 #include "ndef.h"
 #include "openprinttag.h"
+#include "tigertag_db.h"
+
+#include <algorithm>
 
 namespace {
 
@@ -155,6 +158,55 @@ Filament decodeOpenPrintTag(const Tag &, const std::vector<NdefRecord> &records)
         f.nozzleMax = opt.nozzleMax;
         f.bedTemp = opt.bedTemp;
         return withDefaults(f);
+    }
+    return Filament();
+}
+
+// --- OpenTag3D -------------------------------------------------------------
+
+// NDEF application/opentag3d. 2.x layout (versions 2000 and up) from the
+// OpenTag3D spec, and the pre-2.0 layout (0.012) as nfc2klipper reads it.
+Filament decodeOpenTag3D(const Tag &, const std::vector<NdefRecord> &records) {
+    for (auto &record : records) {
+        if (record.mime() != "application/opentag3d" || record.payload.size() < 2) continue;
+        // Short payloads read as zero-padded, as FF_NFC does.
+        std::vector<uint8_t> p = record.payload;
+        uint16_t version = be16(p.data());
+        Filament f;
+        f.format = "OpenTag3D";
+        if (version >= 2000) {
+            p.resize(std::max<size_t>(p.size(), 0xE0), 0);
+            const uint8_t *d = p.data();
+            normalizeMaterial(ascii(d + 0x02, 5), f.material, f.modifiers);
+            addModifier(f.modifiers, ascii(d + 0x07, 5));
+            f.brand = ascii(d + 0x0C, 16);
+            f.name = ascii(d + 0x1C, 32);
+            f.color = rgb(d[0x3C], d[0x3D], d[0x3E]);
+            f.alpha = d[0x3F];
+            f.diameter = be16(d + 0x8C) / 1000.0f;
+            if (f.diameter <= 0) f.diameter = 1.75f;
+            f.weight = be16(d + 0x9E);
+            int print = d[0x90] * 5;
+            f.nozzleMin = d[0x91] ? d[0x91] * 5 : print;
+            f.nozzleMax = d[0x92] ? d[0x92] * 5 : print;
+            f.bedTemp = d[0x94] * 5;
+            return f;
+        }
+        if (version >= 0x000C && p.size() >= 0x64) {
+            const uint8_t *d = p.data();
+            normalizeMaterial(ascii(d + 0x02, 5), f.material, f.modifiers);
+            addModifier(f.modifiers, ascii(d + 0x07, 5));
+            f.brand = ascii(d + 0x1B, 16);
+            f.name = ascii(d + 0x2B, 32);
+            f.color = rgb(d[0x4B], d[0x4C], d[0x4D]);
+            f.alpha = d[0x4E];
+            f.diameter = be16(d + 0x5C) / 1000.0f;
+            if (f.diameter <= 0) f.diameter = 1.75f;
+            f.weight = be16(d + 0x5E);
+            f.nozzleMax = d[0x60] * 5;
+            f.bedTemp = d[0x61] * 5;
+            return f;
+        }
     }
     return Filament();
 }
@@ -355,6 +407,51 @@ Filament decodeSnapmaker(const Tag &tag, const std::vector<NdefRecord> &) {
     return f;
 }
 
+// --- TigerTag --------------------------------------------------------------
+
+// NTAG user memory from page 4, ids looked up in TigerTag's tables
+// (tigertag_db.h, offline copies).
+template <typename T>
+const T *tigerLookup(const T *table, size_t count, uint16_t id) {
+    size_t lo = 0, hi = count;
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        if (table[mid].id == id) return &table[mid];
+        if (table[mid].id < id) lo = mid + 1;
+        else hi = mid;
+    }
+    return nullptr;
+}
+#define TIGER_LOOKUP(table, id) tigerLookup(table, sizeof(table) / sizeof(table[0]), id)
+
+Filament decodeTigerTag(const Tag &tag, const std::vector<NdefRecord> &) {
+    if (tag.kind != TagKind::Type2 || tag.memory.size() < 16 + 36) return Filament();
+    const uint8_t *u = tag.memory.data() + 16;
+    uint32_t id = ((uint32_t)be16(u) << 16) | be16(u + 2);
+    if (id != 0x5BF59264 && id != 0xBC0FCB97) return Filament();
+    Filament f;
+    f.format = "TigerTag";
+    const TigerTagMaterial *material = TIGER_LOOKUP(TIGERTAG_MATERIALS, be16(u + 8));
+    f.material = material ? material->material : "PLA";
+    for (uint8_t aspect : {u[10], u[11]}) {
+        const TigerTagName *a = TIGER_LOOKUP(TIGERTAG_ASPECTS, aspect);
+        if (a && strcmp(a->name, "None") && strcmp(a->name, "-")) addModifier(f.modifiers, a->name);
+    }
+    if (const TigerTagName *b = TIGER_LOOKUP(TIGERTAG_BRANDS, be16(u + 14))) f.brand = b->name;
+    const TigerTagName *diameter = TIGER_LOOKUP(TIGERTAG_DIAMETERS, u[13]);
+    f.diameter = diameter ? atof(diameter->name) : 1.75f;
+    if (f.diameter <= 0) f.diameter = 1.75f;
+    f.color = rgb(u[16], u[17], u[18]);
+    f.alpha = u[19];
+    uint32_t measure = ((uint32_t)u[20] << 16) | (u[21] << 8) | u[22];
+    uint8_t unit = u[23];   // 2, 35: kg; 10: mg; otherwise g
+    f.weight = unit == 2 || unit == 35 ? measure * 1000 : unit == 10 ? measure / 1000 : measure;
+    f.nozzleMin = be16(u + 24);
+    f.nozzleMax = be16(u + 26);
+    f.bedTemp = u[31] ? u[31] : u[30] ? u[30] : material ? material->bed : 0;
+    return f;
+}
+
 // --- Qidi ------------------------------------------------------------------
 
 Filament decodeQidi(const Tag &tag, const std::vector<NdefRecord> &) {
@@ -544,8 +641,9 @@ Filament decodeText(const Tag &, const std::vector<NdefRecord> &records) {
 }
 
 const Decoder DECODERS[] = {
-    decodeOpenPrintTag, decodeOpenSpool, decodeSpoolEase, decodeBambu, decodeCreality,
-    decodeSnapmaker, decodeAnycubic, decodeElegoo, decodeQidi, decodeText,
+    decodeOpenPrintTag, decodeOpenTag3D, decodeOpenSpool, decodeSpoolEase, decodeBambu,
+    decodeCreality, decodeSnapmaker, decodeTigerTag, decodeAnycubic, decodeElegoo, decodeQidi,
+    decodeText,
 };
 
 }  // namespace
