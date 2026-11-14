@@ -5,6 +5,7 @@
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 #include <WiFi.h>
+#include <Wire.h>
 #include <esp_sleep.h>
 
 #include "app.h"
@@ -18,19 +19,80 @@
 // ST7789 (also in the middle of its 240 columns) on the VSPI pins, backlight
 // on GPIO 32. The ideaspark ESP32 1.14" LCD: the same pins, with a 135x240
 // ST7789 in the middle of its 240x320 memory.
+// The Waveshare ESP32-C6-Touch-LCD-1.47 has a JD9853 (same size and offset)
+// on other pins, and an AXS5106L touch controller on I2C.
 #if CONFIG_IDF_TARGET_ESP32C5
 constexpr int LCD147_SCLK = 7, LCD147_MOSI = 6, LCD147_DC = 24, LCD147_CS = 23, LCD147_RST = 26, LCD147_BL = 10;
+#elif defined(BOARD_LCD169)
+// The Waveshare ESP32-C6-LCD-1.69: a 240x280 ST7789 (rows 20-299 of its
+// 320), handled like the 1.47" ones.
+constexpr int LCD147_SCLK = 1, LCD147_MOSI = 2, LCD147_DC = 3, LCD147_CS = 5, LCD147_RST = 4, LCD147_BL = 6;
+#elif defined(BOARD_C6_TOUCH147)
+constexpr int LCD147_SCLK = 1, LCD147_MOSI = 2, LCD147_DC = 15, LCD147_CS = 14, LCD147_RST = 22, LCD147_BL = 23;
 #else
 constexpr int LCD147_SCLK = 7, LCD147_MOSI = 6, LCD147_DC = 15, LCD147_CS = 14, LCD147_RST = 21, LCD147_BL = 22;
+#endif
+
+#ifdef BOARD_C6_TOUCH147
+// The JD9853: an ST7789-like command set, with its own power and gamma
+// setup (from Waveshare's demo for the board).
+struct Panel_JD9853 : public lgfx::Panel_LCD {
+    Panel_JD9853() {
+        _cfg.panel_height = _cfg.memory_height = 320;
+        _cfg.dummy_read_pixel = 16;
+    }
+
+protected:
+    const uint8_t *getInitCommands(uint8_t listno) const override {
+        static constexpr uint8_t list0[] = {
+            CMD_SLPOUT, CMD_INIT_DELAY, 120,
+            0xDF, 2, 0x98, 0x53,
+            0xB2, 1, 0x23,
+            0xB7, 4, 0x00, 0x47, 0x00, 0x6F,
+            0xBB, 6, 0x1C, 0x1A, 0x55, 0x73, 0x63, 0xF0,
+            0xC0, 2, 0x44, 0xA4,
+            0xC1, 1, 0x16,
+            0xC3, 8, 0x7D, 0x07, 0x14, 0x06, 0xCF, 0x71, 0x72, 0x77,
+            0xC4, 12, 0x00, 0x00, 0xA0, 0x79, 0x0B, 0x0A, 0x16, 0x79, 0x0B, 0x0A, 0x16, 0x82,
+            0xC8, 32, 0x3F, 0x32, 0x29, 0x29, 0x27, 0x2B, 0x27, 0x28, 0x28, 0x26, 0x25, 0x17, 0x12, 0x0D, 0x04, 0x00,
+                      0x3F, 0x32, 0x29, 0x29, 0x27, 0x2B, 0x27, 0x28, 0x28, 0x26, 0x25, 0x17, 0x12, 0x0D, 0x04, 0x00,
+            0xD0, 5, 0x04, 0x06, 0x6B, 0x0F, 0x00,
+            0xD7, 2, 0x00, 0x30,
+            0xE6, 1, 0x14,
+            0xDE, 1, 0x01,
+            0xB7, 5, 0x03, 0x13, 0xEF, 0x35, 0x35,
+            0xC1, 3, 0x14, 0x15, 0xC0,
+            0xC2, 2, 0x06, 0x3A,
+            0xC4, 2, 0x72, 0x12,
+            0xBE, 1, 0x00,
+            0xDE, 1, 0x02,
+            0xE5, 3, 0x00, 0x02, 0x00,
+            0xE5, 3, 0x01, 0x02, 0x00,
+            0xDE, 1, 0x00,
+            0x35, 1, 0x00,
+            0xDE, 1, 0x02,
+            0xE5, 3, 0x00, 0x02, 0x00,
+            0xDE, 1, 0x00,
+            CMD_DISPON, CMD_INIT_DELAY, 10,
+            0xFF, 0xFF,
+        };
+        return listno == 0 ? list0 : nullptr;
+    }
+};
 #endif
 
 class CydLcd : public lgfx::LGFX_Device {
 public:
     explicit CydLcd(DisplayType type) {
-        bool c6 = type == DisplayType::C6Lcd147;
+        bool lcd169 = type == DisplayType::Lcd169;
+        bool c6 = type == DisplayType::C6Lcd147 || lcd169;
         bool lcd114 = type == DisplayType::Lcd114;
         bool lcd19 = type == DisplayType::Lcd19 || lcd114;
+#ifdef BOARD_C6_TOUCH147
+        lgfx::Panel_Device *panel = &jd9853_;
+#else
         lgfx::Panel_Device *panel = type == DisplayType::CydIli9341 ? (lgfx::Panel_Device *)&ili9341_ : &st7789_;
+#endif
         {
             auto c = bus_.config();
 #if CONFIG_IDF_TARGET_ESP32
@@ -56,15 +118,19 @@ public:
             c.pin_cs = c6 ? LCD147_CS : 15;
             c.pin_rst = lcd19 ? 4 : c6 ? LCD147_RST : -1;
             c.pin_busy = -1;
-            c.panel_width = lcd114 ? 135 : lcd19 ? 170 : c6 ? 172 : 240;
-            c.panel_height = lcd114 ? 240 : 320;
+            c.panel_width = lcd114 ? 135 : lcd19 ? 170 : lcd169 ? 240 : c6 ? 172 : 240;
+            c.panel_height = lcd114 ? 240 : lcd169 ? 280 : 320;
             c.memory_width = 240;
             c.memory_height = 320;
-            c.offset_x = lcd114 ? 52 : lcd19 ? 35 : c6 ? 34 : 0;
-            c.offset_y = lcd114 ? 40 : 0;
+            c.offset_x = lcd114 ? 52 : lcd19 ? 35 : lcd169 ? 0 : c6 ? 34 : 0;
+            c.offset_y = lcd114 ? 40 : lcd169 ? 20 : 0;
             c.readable = !c6 && !lcd19;
             c.invert = c6 || lcd19;
+#ifdef BOARD_C6_TOUCH147
+            c.rgb_order = true;     // the JD9853 reads the order bit the other way round
+#else
             c.rgb_order = false;
+#endif
             c.bus_shared = false;
             panel->config(c);
         }
@@ -83,12 +149,65 @@ public:
 private:
     lgfx::Panel_ILI9341 ili9341_;
     lgfx::Panel_ST7789 st7789_;
+#ifdef BOARD_C6_TOUCH147
+    Panel_JD9853 jd9853_;
+#endif
     lgfx::Bus_SPI bus_;
     lgfx::Light_PWM light_;
 };
 
 namespace {
 
+#ifdef BOARD_C6_TOUCH147
+// The AXS5106L touch controller of the ESP32-C6-Touch-LCD-1.47, on I2C
+// (shared with a PN532 on I2C, which then uses these pins too). It reports
+// portrait 172x320 points.
+constexpr int AXS_SDA = 18, AXS_SCL = 19, AXS_RST = 20;
+constexpr uint8_t AXS_ADDR = 0x63, AXS_TOUCH_REG = 0x01;
+constexpr uint32_t AXS_POLL = 20;
+
+// Polled, a full 14-byte report each time (its INT line did not fire on
+// this board). It NAKs a repeated start, so the register is written with a
+// stop before the read.
+bool axsPressed = false;
+int axsX = 0, axsY = 0;
+uint32_t axsReadAt = 0;
+
+void axsBegin() {
+    Wire.begin(AXS_SDA, AXS_SCL);
+    pinMode(AXS_RST, OUTPUT);
+    digitalWrite(AXS_RST, LOW);
+    delay(20);
+    digitalWrite(AXS_RST, HIGH);
+    delay(100);
+}
+
+// Portrait points while pressed.
+bool axsRead(int &x, int &y) {
+    if (millis() - axsReadAt >= AXS_POLL) {
+        axsReadAt = millis();
+        uint8_t data[14] = {0};
+        Wire.beginTransmission(AXS_ADDR);
+        Wire.write(AXS_TOUCH_REG);
+        bool ok = Wire.endTransmission() == 0 && Wire.requestFrom(AXS_ADDR, (uint8_t)14) == 14;
+        if (ok) Wire.readBytes(data, 14);
+        uint8_t points = data[1] & 0x0F;
+        axsPressed = ok && points > 0 && points <= 5;
+        if (axsPressed) {
+            axsX = ((data[2] & 0x0F) << 8) | data[3];
+            axsY = ((data[4] & 0x0F) << 8) | data[5];
+#ifdef TOUCH_DEBUG
+            Serial.printf("axs %d %d\n", axsX, axsY);
+#endif
+        }
+    }
+    x = axsX;
+    y = axsY;
+    return axsPressed;
+}
+#endif
+
+#ifndef BOARD_C6_TOUCH147
 // The XPT2046 touch controller, bit-banged on its own pins (LovyanGFX's
 // driver read a fixed Y on a CYD).
 constexpr int T_CLK = 25, T_MOSI = 32, T_MISO = 39, T_CS = 33;
@@ -139,12 +258,13 @@ bool touchRaw(int &x, int &y) {
     digitalWrite(T_CS, HIGH);
     return pressed;
 }
+#endif
 
 }  // namespace
 
 namespace {
 
-constexpr int PICK_Y = 146, PICK_H = 42, PICK_W = 74, PICK_X = 8;
+constexpr int PICK_X = 8;
 constexpr uint32_t SCAN_SHOWN = 5 * 60 * 1000;
 constexpr uint32_t DRAW_INTERVAL = 200;
 constexpr uint32_t TOUCH_REPEAT = 250;
@@ -168,6 +288,17 @@ const lgfx::IFont *const BODY = &fonts::FreeSans9pt7b;
 const lgfx::IFont *const BODY_BOLD = &fonts::FreeSansBold9pt7b;
 const lgfx::IFont *const SMALL = &fonts::Font2;
 
+// The first slot button: Ask (0) where the printer's screen asks, else 1.
+int slotRowFirst(const PrinterConfig &printer) { return printer.screenAsk() ? 0 : 1; }
+
+// The filament's name in its color, or light grey when that is too dark to
+// read on the dark background (or unknown).
+uint32_t spoolTextColor(int color) {
+    if (color < 0) return TEXT;
+    int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
+    return (r * 299 + g * 587 + b * 114) / 1000 < 80 ? 0xC8CDD2u : (uint32_t)color;
+}
+
 String fit(lgfx::LGFX_Device &lcd, String text, int width) {
     if (lcd.textWidth(text.c_str()) <= width) return text;
     while (text.length() > 1 && lcd.textWidth((text + "...").c_str()) > width) text.remove(text.length() - 1);
@@ -189,10 +320,17 @@ bool scanShown() {
 void Tft::begin(const DisplayConfig &config) {
     lcd_ = new CydLcd(config.type);
     lcd_->init();
+#ifdef BOARD_C6_TOUCH147
+    touch_ = true;
+    axsBegin();
+#else
     touch_ = config.type == DisplayType::CydIli9341 || config.type == DisplayType::CydSt7789;
     if (touch_) touchBegin();
+#endif
     flip_ = config.flip;
     lcd_->setRotation(flip_ ? 3 : 1);
+    // The 1.69" panel's corners are rounded: the edge rows keep clear of them.
+    corner_ = config.type == DisplayType::Lcd169 ? 14 : 0;
     w_ = lcd_->width();
     h_ = lcd_->height();
     compact_ = h_ < 240;
@@ -243,10 +381,18 @@ void Tft::off() {
 
 bool Tft::readTouch(int &x, int &y) {
     int rawX, rawY;
+#ifdef BOARD_C6_TOUCH147
+    if (!axsRead(rawX, rawY)) return false;
+    // Portrait points: in landscape (rotation 1) their Y runs across the
+    // screen and their X down.
+    x = constrain(rawY, 0, w_ - 1);
+    y = constrain(rawX, 0, h_ - 1);
+#else
     if (!touchRaw(rawX, rawY)) return false;
     // In landscape the controller's Y runs across the screen and its X down.
     x = constrain(map(rawY, TOUCH_X0, TOUCH_X1, 0, w_ - 1), 0, w_ - 1);
     y = constrain(map(rawX, TOUCH_Y0, TOUCH_Y1, 0, h_ - 1), 0, h_ - 1);
+#endif
     if (flip_) {
         x = w_ - 1 - x;
         y = h_ - 1 - y;
@@ -331,17 +477,21 @@ void Tft::touched(int x, int y) {
     }
     if (config.active < 0 || config.active >= (int)config.printers.size()) return;
     PrinterConfig &printer = config.printers[config.active];
-    if (y >= footer_) {
+    // A short screen shows a scan without the slot row (its pick buttons
+    // take that room).
+    bool slotRow = !compact_ || screen != Screen::Scan;
+    if (y >= footer_ && slotRow) {
         // The fixed slot for this reader.
-        int slot = constrain(x / slotWidth(), 0, SLOT_COUNT);
-        if (slot == printer.slot || (!slot && !printer.canAsk()) || slot > printer.slotCount()) return;
+        int first = slotRowFirst(printer), index = (x - corner_) / slotWidth();
+        int slot = first + index;
+        if (!printer.hasSlots() || index > SLOT_COUNT || slot > printer.slotCount() || slot == printer.slot) return;
         printer.slot = slot;
         saveConfig(config);
         app.feedback.count(slot);
         return;
     }
-    if (screen == Screen::Scan && app.last.waiting && y >= PICK_Y && y < PICK_Y + PICK_H) {
-        int slot = (x - PICK_X) / (PICK_W + 2) + 1;
+    if (screen == Screen::Scan && app.last.waiting && y >= pickY() && y < pickY() + pickH()) {
+        int slot = (x - PICK_X - corner_) / (pickW() + 2) + 1;
         int target = app.last.printer >= 0 ? app.last.printer : config.active;
         if (slot < 1 || slot > config.printers[target].slotCount()) return;
         app.last.status = "Sending to " + slotName(config.printers[target], slot) + "...";
@@ -361,6 +511,7 @@ Tft::Screen Tft::current() const {
 
 String Tft::contents(Screen screen) const {
     String s = String((int)screen) + "|" + address();
+    if (app.voiceShown) s += "|voice " + app.voiceText;
     if (screen == Screen::Setup) return s + "|" + app.apName + "|" + app.wifiError;
     const PrinterConfig *printer = app.config.activePrinter();
     if (printer) s += "|" + printer->name + "|" + String(printer->model == Model::Creator5) + String(printer->slot);
@@ -407,7 +558,22 @@ void Tft::draw(bool force) {
         // A short screen needs the slot row's room for a scan's status.
         if (!compact_ || screen != Screen::Scan) drawSlots();
     }
+    if (app.voiceShown) drawVoice();
     lcd_->endWrite();
+}
+
+// A voice command's prompt or result, over the bottom row.
+void Tft::drawVoice() {
+    auto &lcd = *lcd_;
+    int y = footer_, x = corner_ + 3, w = w_ - 2 * corner_ - 6, h = h_ - footer_ - 4 - corner_ / 2;
+    lcd.fillRect(0, footer_ - 1, w_, h_ - footer_ + 1, BG);
+    lcd.fillRoundRect(x, y + 4, w, h, 6, ACCENT);
+    lcd.setTextColor(TEXT, ACCENT);
+    const String &text = app.voiceText;
+    lcd.setFont(BODY_BOLD);
+    if (lcd.textWidth(text.c_str()) > w - 12) lcd.setFont(SMALL);
+    String shown = fit(lcd, text, w - 12);
+    lcd.drawString(shown.c_str(), x + (w - lcd.textWidth(shown.c_str())) / 2, y + 4 + (h - lcd.fontHeight()) / 2);
 }
 
 // Printer name (tap: next printer) and the reader's address.
@@ -419,15 +585,15 @@ void Tft::drawHeader() {
     lcd.setTextColor(MUTED, PANEL);
     String ip = address();
     int ipWidth = lcd.textWidth(ip.c_str());
-    lcd.drawString(ip.c_str(), w_ - 8 - ipWidth, 13 + dy);
+    lcd.drawString(ip.c_str(), w_ - 8 - corner_ - ipWidth, 13 + dy);
     const PrinterConfig *printer = app.config.activePrinter();
     lcd.setFont(tiny_ ? BODY_BOLD : TITLE);
     lcd.setTextColor(printer ? TEXT : WARN, PANEL);
-    int x = 10;
+    int x = 10 + corner_;
     if (touch_ && app.config.printers.size() > 1) {
         // A "more" mark: tap for the next printer.
-        lcd.fillTriangle(10, 14, 22, 14, 16, 24, MUTED);
-        x = 30;
+        lcd.fillTriangle(x, 14, x + 12, 14, x + 6, 24, MUTED);
+        x += 20;
     }
     String name = printer ? printer->name : String("No printer");
     lcd.drawString(fit(lcd, name, w_ - x - ipWidth - 18).c_str(), x, tiny_ ? 4 : 9 + dy);
@@ -438,17 +604,18 @@ void Tft::drawHeader() {
 void Tft::drawSlots() {
     auto &lcd = *lcd_;
     const PrinterConfig *printer = app.config.activePrinter();
+    // Nothing for Spoolman (or no printer); else only the slots it has, and
+    // Ask only where the printer's screen asks.
+    if (!printer || !printer->hasSlots()) return;
     int slotW = slotWidth();
     lcd.drawFastHLine(0, footer_ - 1, w_, LINE);
     lcd.setFont(BODY_BOLD);
-    for (int slot = 0; slot <= SLOT_COUNT; slot++) {
-        int x = slot * slotW;
-        bool on = printer && printer->slot == slot;
+    for (int slot = slotRowFirst(*printer), x = corner_; slot <= printer->slotCount(); slot++, x += slotW) {
+        bool on = printer->slot == slot;
         uint32_t fill = on ? ACCENT : PANEL;
-        lcd.fillRoundRect(x + 3, footer_ + 4, slotW - 6, h_ - footer_ - 8, 6, fill);
-        String label = !printer ? (slot ? String(slot) : String("Ask")) : slotShortName(*printer, slot);
-        bool usable = printer && (slot ? slot <= printer->slotCount() : printer->canAsk());
-        lcd.setTextColor(usable ? TEXT : MUTED, fill);
+        lcd.fillRoundRect(x + 3, footer_ + 4, slotW - 6, h_ - footer_ - 8 - corner_ / 2, 6, fill);
+        String label = slotShortName(*printer, slot);
+        lcd.setTextColor(TEXT, fill);
         int w = lcd.textWidth(label.c_str());
         lcd.drawString(label.c_str(), x + (slotW - w) / 2, footer_ + (tiny_ ? 7 : compact_ ? 9 : 15));
     }
@@ -583,9 +750,10 @@ void Tft::drawScan() {
         lcd.setTextColor(ACCENT, BG);
         lcd.drawString(id.c_str(), w_ - 8 - spoolWidth + 8, sy + 4);
     }
-    lcd.setTextColor(TEXT, BG);
+    uint32_t nameColor = spoolTextColor(f.color);
+    lcd.setTextColor(nameColor, BG);
     lcd.setFont(lcd.textWidth(name.c_str()) <= tw - spoolWidth ? TITLE : BODY_BOLD);
-    if (lcd.textWidth(name.c_str()) <= tw - spoolWidth || !startScroll(name, tx, sy + 2, tw - spoolWidth))
+    if (lcd.textWidth(name.c_str()) <= tw - spoolWidth || !startScroll(name, tx, sy + 2, tw - spoolWidth, nameColor))
         lcd.drawString(fit(lcd, name, tw - spoolWidth).c_str(), tx, sy + 2);
     lcd.setFont(BODY);
     lcd.setTextColor(MUTED, BG);
@@ -624,14 +792,15 @@ void Tft::drawScan() {
         lcd.setTextColor(WARN, BG);
         String where = target->method == Method::FfNfc ? "Pick a slot here or on the printer:"
                                                          : "Pick a slot here or on the web page:";
-        lcd.drawString(where.c_str(), 10, PICK_Y - 20);
+        lcd.drawString(where.c_str(), 10, pickY() - 20);
         lcd.setFont(TITLE);
         for (int slot = 1; slot <= target->slotCount(); slot++) {
-            int x = PICK_X + (slot - 1) * (PICK_W + 2);
-            lcd.fillRoundRect(x, PICK_Y, PICK_W, PICK_H, 6, WARN);
+            int x = PICK_X + corner_ + (slot - 1) * (pickW() + 2);
+            lcd.fillRoundRect(x, pickY(), pickW(), pickH(), 6, WARN);
             String label = slotShortName(*target, slot);
             lcd.setTextColor(BG, WARN);
-            lcd.drawString(label.c_str(), x + (PICK_W - lcd.textWidth(label.c_str())) / 2, PICK_Y + 10);
+            lcd.drawString(label.c_str(), x + (pickW() - lcd.textWidth(label.c_str())) / 2,
+                           pickY() + (pickH() - lcd.fontHeight()) / 2);
         }
         return;
     }

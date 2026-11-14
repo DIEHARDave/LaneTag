@@ -4,7 +4,8 @@
 // color and buttons: the header picks the printer, the bottom row the
 // fixed slot, and a scan waiting for a slot can be put into one here.
 // Also the 1.47" 320x172 ST7789 of the Waveshare ESP32-C6-LCD-1.47: the
-// same screens, tighter and without touch.
+// same screens, tighter and without touch; and the JD9853 of the
+// ESP32-C6-Touch-LCD-1.47, the same with touch.
 #pragma once
 
 #ifdef HAS_TFT
@@ -39,6 +40,7 @@ private:
     Screen current() const;
     void drawHeader();
     void drawSlots();
+    void drawVoice();
     void drawSetup();
     void drawNoReader();
     void drawIdle();
@@ -47,7 +49,13 @@ private:
     int wrap(const String &text, int x, int y, int width, int maxLines);
     void touched(int x, int y);
     bool readTouch(int &x, int &y);
-    int slotWidth() const { return w_ / 5; }    // Ask, 1-4
+    int slotWidth() const { return (w_ - 2 * corner_) / 5; }    // Ask, 1-4
+    // The buttons for a scan waiting for a slot: on a short screen, where
+    // the slot row would be.
+    int pickY() const { return compact_ ? footer_ + 2 : 146; }
+    int pickH() const { return compact_ ? h_ - footer_ - 4 : 42; }
+    // Four across (74 on a 320 wide screen).
+    int pickW() const { return (w_ - 16 - 2 * corner_) / 4 - 2; }
     bool startScroll(const String &text, int x, int y, int width, uint32_t color = 0xFFFFFFu);
     void drawScroll();
 
@@ -63,6 +71,7 @@ private:
     bool compact_ = false;                      // 172 high: tighter rows
     bool tiny_ = false;                         // 135 high: smaller still
     int margin() const { return tiny_ ? 6 : 14; }  // left edge of the text
+    int corner_ = 0;                            // inset from rounded screen corners
     bool touch_ = true;
     bool flip_ = false;
     bool asleep_ = false;

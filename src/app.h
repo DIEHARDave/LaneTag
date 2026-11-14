@@ -33,6 +33,11 @@ struct App {
     // millis() of the last scan, button press, touch or page action (for
     // the sleep timer).
     uint32_t usedAt = 0;
+    // A voice command's prompt or result over the screen's bottom row
+    // (until voiceUntil; 0: until replaced).
+    bool voiceShown = false;
+    String voiceText;
+    uint32_t voiceUntil = 0;
 
     String readerName() const;
     // A new tag was read: decode it and send it to the active printer.

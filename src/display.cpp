@@ -38,7 +38,8 @@ const uint8_t *const MEDIUM = u8g2_font_6x10_tf;
 const uint8_t *const LARGE = u8g2_font_helvB12_tf;
 const uint8_t *const TITLE_SMALLER = u8g2_font_helvB10_tf;
 const uint8_t *const HUGE_ = u8g2_font_helvB24_tf;
-const uint8_t *const WORDMARK = u8g2_font_helvB18_tr;
+// Sized so the spool, "Lane" and the "Tag" box fit the 128 px OLED.
+const uint8_t *const WORDMARK = u8g2_font_helvB14_tr;
 
 // A spool side on, for the LCD's start-up screen: two flanges and the
 // filament between them.
@@ -122,6 +123,7 @@ const char *displayTypeName(DisplayType type) {
     case DisplayType::C6Lcd147: return "c6-lcd147";
     case DisplayType::Lcd19: return "lcd19";
     case DisplayType::Lcd114: return "lcd114";
+    case DisplayType::Lcd169: return "c6-lcd169";
     case DisplayType::Lcd1602: return "lcd1602";
     default: return "none";
     }
@@ -220,22 +222,23 @@ void Display::splash() {
     u8g2_->clearBuffer();
     u8g2_->setFont(WORDMARK);
     int lane = u8g2_->getStrWidth("Lane"), tag = u8g2_->getStrWidth("Tag");
-    constexpr int R = 13, GAP = 6, PAD = 3, CY = 30;
+    constexpr int R = 11, GAP = 5, PAD = 3, CY = 28;
     int x = (WIDTH - (2 * R + 1 + GAP + lane + 1 + tag + 2 * PAD)) / 2;
+    if (x < 0) x = 0;
     int cx = x + R;
     u8g2_->drawCircle(cx, CY, R);
     u8g2_->drawDisc(cx, CY, R - 3);
     u8g2_->setDrawColor(0);
-    u8g2_->drawDisc(cx, CY, 5);
+    u8g2_->drawDisc(cx, CY, 4);
     u8g2_->setDrawColor(1);
-    u8g2_->drawCircle(cx, CY, 5);
-    u8g2_->drawDisc(cx, CY, 2);
+    u8g2_->drawCircle(cx, CY, 4);
+    u8g2_->drawDisc(cx, CY, 1);
     x += 2 * R + 1 + GAP;
-    u8g2_->drawStr(x, CY + 9, "Lane");
+    u8g2_->drawStr(x, CY + 7, "Lane");
     x += lane + 1;
-    u8g2_->drawRBox(x, CY - 12, tag + 2 * PAD, 26, 3);
+    u8g2_->drawRBox(x, CY - 10, tag + 2 * PAD, 22, 3);
     u8g2_->setDrawColor(0);
-    u8g2_->drawStr(x + PAD, CY + 9, "Tag");
+    u8g2_->drawStr(x + PAD, CY + 7, "Tag");
     u8g2_->setDrawColor(1);
     u8g2_->setFont(SMALL);
     String version = shortVersion();
@@ -350,9 +353,9 @@ void Display::footer() {
         u8g2_->drawUTF8(0, 63, "No printer");
         return;
     }
-    String slot = slotName(*printer, printer->slot);
-    int slotWidth = u8g2_->getUTF8Width(slot.c_str());
-    u8g2_->drawUTF8(WIDTH - slotWidth, 63, slot.c_str());
+    String slot = printer->hasSlots() ? slotName(*printer, printer->slot) : String();
+    int slotWidth = slot.length() ? u8g2_->getUTF8Width(slot.c_str()) : -6;
+    if (slot.length()) u8g2_->drawUTF8(WIDTH - slotWidth, 63, slot.c_str());
     String name = printer->name;
     while (name.length() > 1 && u8g2_->getUTF8Width(name.c_str()) > WIDTH - slotWidth - 6)
         name.remove(name.length() - 1);
@@ -421,6 +424,7 @@ void Display::renderSlot() {
     const PrinterConfig *printer = app.config.activePrinter();
     if (!printer) return title("No printer");
     title(printer->name);
+    if (!printer->hasSlots()) return;
     u8g2_->setFont(SMALL);
     u8g2_->drawUTF8(0, 25, printer->slot ? "Scans go to" : "Scans ask for the slot");
     u8g2_->setFont(HUGE_);
@@ -559,7 +563,7 @@ void Display::renderLcd(String rows[2]) {
     const PrinterConfig *printer = app.config.activePrinter();
     if ((int32_t)(millis() - slotUntil_) < 0) {
         rows[0] = printer ? printer->name : String("No printer");
-        if (printer) rows[1] = printer->slot ? "Scans -> " + slotName(*printer, printer->slot) : String("Scans ask for the slot");
+        if (printer && printer->hasSlots()) rows[1] = printer->slot ? "Scans -> " + slotName(*printer, printer->slot) : String("Scans ask for the slot");
         return;
     }
     if (app.apMode) {
@@ -590,6 +594,8 @@ void Display::renderLcd(String rows[2]) {
         rows[1] = app.reader.error();
         return;
     }
-    rows[0] = printer ? lcdSplit(printer->name, slotName(*printer, printer->slot)) : String("No printer");
+    rows[0] = !printer             ? String("No printer")
+              : printer->hasSlots() ? lcdSplit(printer->name, slotName(*printer, printer->slot))
+                                    : printer->name;
     rows[1] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("Wi-Fi lost");
 }

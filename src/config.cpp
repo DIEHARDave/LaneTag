@@ -25,6 +25,19 @@ constexpr int DEFAULT_LED = 8;
 constexpr bool DEFAULT_LED_LOW = false;
 constexpr int DEFAULT_BUTTON = 28;
 const int SCREEN_PINS[] = {6, 7, 10, 23, 24, 26};
+#elif defined(BOARD_C6_TOUCH147)
+// Waveshare ESP32-C6-Touch-LCD-1.47: the screen takes 1, 2, 14, 15, 22 and
+// 23 (and the SPI bus, so the reader is a PN532), its touch controller 20
+// and 21 and the I2C bus on 18 and 19 (with the motion sensor). The PN532
+// goes on the header's TX/RX in HSU mode, or on that I2C bus. No RGB LED;
+// GPIO 0 reads the battery.
+constexpr int DEFAULT_SDA = 18, DEFAULT_SCL = 19, DEFAULT_RX = 17, DEFAULT_TX = 16;
+constexpr int DEFAULT_SCK = -1, DEFAULT_MISO = -1, DEFAULT_MOSI = -1, DEFAULT_SS = -1, DEFAULT_RST = -1;
+constexpr int DEFAULT_BUSY = -1;
+constexpr int DEFAULT_LED = -1;
+constexpr bool DEFAULT_LED_LOW = false;
+constexpr int DEFAULT_BUTTON = 9;
+const int SCREEN_PINS[] = {1, 2, 14, 15, 22, 23, 20, 21};
 #elif defined(BOARD_LCD147)
 // Waveshare ESP32-C6-LCD-1.47: the screen takes 6, 7, 14, 15, 21 and 22 (and
 // the SPI bus, so the reader is a PN532), the SD slot 4 and 5. The PN532
@@ -36,6 +49,19 @@ constexpr int DEFAULT_LED = 8;
 constexpr bool DEFAULT_LED_LOW = false;
 constexpr int DEFAULT_BUTTON = 9;
 const int SCREEN_PINS[] = {6, 7, 14, 15, 21, 22};
+#elif defined(BOARD_LCD169)
+// Waveshare ESP32-C6-LCD-1.69: the screen takes 1-6 (and the SPI bus, so the
+// reader is a PN532), GPIO 15 keeps the board on when it runs from its
+// battery and 18 is the PWR button; the I2C bus on 7 and 8 has the motion
+// sensor, clock and audio codec, and the audio 19-23. The PN532 goes on
+// GPIO 16 and 17 in HSU mode, or on that I2C bus. No RGB LED.
+constexpr int DEFAULT_SDA = 8, DEFAULT_SCL = 7, DEFAULT_RX = 17, DEFAULT_TX = 16;
+constexpr int DEFAULT_SCK = -1, DEFAULT_MISO = -1, DEFAULT_MOSI = -1, DEFAULT_SS = -1, DEFAULT_RST = -1;
+constexpr int DEFAULT_BUSY = -1;
+constexpr int DEFAULT_LED = -1;
+constexpr bool DEFAULT_LED_LOW = false;
+constexpr int DEFAULT_BUTTON = 9;
+const int SCREEN_PINS[] = {1, 2, 3, 4, 5, 6, 15, 18, 19, 20, 21, 22, 23};
 #elif defined(BOARD_LCD19) || defined(BOARD_LCD114)
 // ideaspark ESP32 1.9" and 1.14" LCD: the screen takes 2, 4, 15, 18, 23 and 32 (and the
 // VSPI bus, so the reader is a PN532). The PN532 goes on GPIO 16 and 17 in HSU
@@ -54,8 +80,11 @@ const char *const OWN_SCREEN_SIZE = "1.9\"";
 #elif defined(BOARD_LCD114)
 constexpr DisplayType OWN_SCREEN = DisplayType::Lcd114;
 const char *const OWN_SCREEN_SIZE = "1.14\"";
+#elif defined(BOARD_LCD169)
+constexpr DisplayType OWN_SCREEN = DisplayType::Lcd169;
+const char *const OWN_SCREEN_SIZE = "1.69\"";
 #endif
-#if defined(BOARD_LCD147) || defined(BOARD_LCD19) || defined(BOARD_LCD114)
+#if defined(BOARD_LCD147) || defined(BOARD_LCD19) || defined(BOARD_LCD114) || defined(BOARD_LCD169)
 const char *const READER_PIN_KEYS[] = {"sda", "scl", "rx", "tx", "sck", "miso", "mosi", "ss", "rst", "busy"};
 
 bool isScreenPin(int pin) {
@@ -142,9 +171,11 @@ void setDefaults(Config &config) {
 #ifdef BOARD_LCD147
     config.reader.bus = Pn532Bus::UART;
     config.display.type = DisplayType::C6Lcd147;
+#ifndef BOARD_C6_TOUCH147
     config.led.type = LedType::Ws2812;
 #endif
-#if defined(BOARD_LCD19) || defined(BOARD_LCD114)
+#endif
+#if defined(BOARD_LCD19) || defined(BOARD_LCD114) || defined(BOARD_LCD169)
     config.reader.bus = Pn532Bus::UART;
     config.display.type = OWN_SCREEN;
 #endif
@@ -348,10 +379,14 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
             return next.reader.chip == ReaderChip::RC522 ? "the RC522 needs its SCK, MISO, MOSI and SDA (SS) pins"
                                                          : "the PN5180 needs its SCK, MISO, MOSI and NSS pins";
         if (next.reader.chip == ReaderChip::PN5180 && next.reader.busy < 0) return "the PN5180 needs its BUSY pin";
-#if defined(BOARD_LCD147) || defined(BOARD_LCD19) || defined(BOARD_LCD114)
+#if defined(BOARD_LCD147) || defined(BOARD_LCD19) || defined(BOARD_LCD114) || defined(BOARD_LCD169)
         if (spi) return "the screen has this board's SPI bus; use a PN532 (HSU or I2C)";
         for (int p : {next.reader.sda, next.reader.scl, next.reader.rx, next.reader.tx})
             if (isScreenPin(p)) return "GPIO " + String(p) + " is the screen's on this board";
+#endif
+#ifdef BOARD_C6_TOUCH147
+        if (next.reader.bus == Pn532Bus::I2C && (next.reader.sda != 18 || next.reader.scl != 19))
+            return "on this board a PN532 on I2C shares the touch screen's bus: SDA 18, SCL 19";
 #endif
     }
     if (in["led_type"].is<const char *>()) {
@@ -382,6 +417,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
                             : type == "c6-lcd147"  ? DisplayType::C6Lcd147
                             : type == "lcd19"      ? DisplayType::Lcd19
                             : type == "lcd114"     ? DisplayType::Lcd114
+                            : type == "c6-lcd169"  ? DisplayType::Lcd169
                             : type == "lcd1602"    ? DisplayType::Lcd1602
                                                    : DisplayType::None;
 #ifndef HAS_TFT
@@ -389,12 +425,13 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
 #elif defined(BOARD_LCD147)
         if (isTft(next.display.type) && next.display.type != DisplayType::C6Lcd147)
             return "this firmware drives only the board's own 1.47\" screen";
-#elif defined(BOARD_LCD19) || defined(BOARD_LCD114)
+#elif defined(BOARD_LCD19) || defined(BOARD_LCD114) || defined(BOARD_LCD169)
         if (isTft(next.display.type) && next.display.type != OWN_SCREEN)
             return String("this firmware drives only the board's own ") + OWN_SCREEN_SIZE + " screen";
 #else
         if (next.display.type == DisplayType::Lcd19) return "the 1.9\" screen needs the ideaspark-lcd19 build";
         if (next.display.type == DisplayType::Lcd114) return "the 1.14\" screen needs the ideaspark-lcd114 build";
+        if (next.display.type == DisplayType::Lcd169) return "the 1.69\" screen needs the esp32-c6-lcd169 build";
         if (next.display.type == DisplayType::C6Lcd147)
             return "the 1.47\" screen needs the esp32-c6-lcd or esp32-c5-lcd build";
 #endif
@@ -606,7 +643,7 @@ void loadConfig(Config &config) {
         log_w("stored settings are not valid JSON; using defaults");
         return;
     }
-#if defined(BOARD_LCD147) || defined(BOARD_LCD19) || defined(BOARD_LCD114)
+#if defined(BOARD_LCD147) || defined(BOARD_LCD19) || defined(BOARD_LCD114) || defined(BOARD_LCD169)
     // Saved by the plain firmware for this chip, whose reader pins can be
     // this board's screen pins (I2C there crashes the I2C driver): back to
     // the defaults for those.

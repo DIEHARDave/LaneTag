@@ -10,6 +10,7 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LaneTag</title>
 <style>
+.voice-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0}.voice-row b{min-width:9em}
 :root{--bg:#f4f5f7;--card:#fff;--text:#1d2129;--muted:#5f6673;--line:#dde0e5;--accent:#2563eb;--ok:#15803d;--bad:#b91c1c;--warn:#a16207;--chip:#eef0f3}
 @media (prefers-color-scheme:dark){:root{--bg:#14161a;--card:#1d2026;--text:#e8eaed;--muted:#9aa1ad;--line:#2f333b;--accent:#5b8def;--ok:#4ade80;--bad:#f87171;--warn:#facc15;--chip:#2a2e36}}
 *{box-sizing:border-box}
@@ -185,7 +186,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
   <div class="card">
     <h2>Display</h2>
     <div class="grid">
-      <div><label for="dispType">Screen</label><select id="dispType"><option value="none">None</option><option value="ssd1306">OLED SSD1306 (0.96", I2C)</option><option value="sh1106">OLED SH1106 (1.3", I2C)</option><option value="lcd1602">LCD 1602 (16x2, I2C backpack)</option><option value="cyd">CYD 2.8" touch (ESP32-2432S028)</option><option value="cyd-st7789">CYD 2.8" touch, ST7789 (two USB ports)</option><option value="c6-lcd147">Waveshare ESP32-C6/C5-LCD-1.47</option><option value="lcd19">ideaspark ESP32 1.9" LCD</option><option value="lcd114">ideaspark ESP32 1.14" LCD</option></select></div>
+      <div><label for="dispType">Screen</label><select id="dispType"><option value="none">None</option><option value="ssd1306">OLED SSD1306 (0.96", I2C)</option><option value="sh1106">OLED SH1106 (1.3", I2C)</option><option value="lcd1602">LCD 1602 (16x2, I2C backpack)</option><option value="cyd">CYD 2.8" touch (ESP32-2432S028)</option><option value="cyd-st7789">CYD 2.8" touch, ST7789 (two USB ports)</option><option value="c6-lcd147">Waveshare ESP32-C6/C5-LCD-1.47</option><option value="lcd19">ideaspark ESP32 1.9" LCD</option><option value="lcd114">ideaspark ESP32 1.14" LCD</option><option value="c6-lcd169">Waveshare ESP32-C6-LCD-1.69</option></select></div>
       <div class="disp oled"><label for="dispSda">SDA pin</label><input id="dispSda" type="number"></div>
       <div class="disp oled"><label for="dispScl">SCL pin</label><input id="dispScl" type="number"></div>
       <div class="disp oled"><label for="dispAddr">Address</label><select id="dispAddr"><option value="60">0x3C</option><option value="61">0x3D</option><option value="39">0x27</option><option value="63">0x3F</option></select></div>
@@ -196,6 +197,13 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
     <div class="hint">Shows the active printer and slot, and the filament of the last scan. It can share the PN532's I2C pins. Boards with a built-in 0.96" OLED (such as the Ideaspark ESP32) usually have it on SDA 21 / SCL 22. The CYD touch screen (classic ESP32 builds only) also has buttons: tap the printer name for the next printer, the bottom row for the fixed slot, and a scan waiting for a slot can be put into one there.</div>
     <div class="msg" id="dispMsg"></div>
     <div class="actions"><button class="btn primary" id="saveDisplay">Save</button></div>
+  </div>
+  <div class="card hidden" id="voiceCard">
+    <h2>Voice commands</h2>
+    <div class="hint">Hold the board's PWR button, say a command, let go. The board knows your voice from three takes of each command, recorded here: click Train, then hold PWR and say the command three times (the screen shows how far it is). Add 3 more takes later (another day, or holding the board differently) and it gets surer: up to 6 per command. Any words work, in any language ("Lane 2", "T one", ...). Lane 1-4 sets the slot scans go to, or puts a scan that waits for its slot into that one. Everything is recognized on the board itself.</div>
+    <div id="voiceList"></div>
+    <div class="msg hidden" id="voiceMsg"></div>
+    <div class="actions"><button class="btn hidden" id="voiceCancel">Stop training</button><button class="btn danger" id="voiceClear">Forget all</button> <a href="/api/voice/last.wav" target="_blank" rel="noopener">last recording</a></div>
   </div>
   <div class="card">
     <h2>Firmware</h2>
@@ -432,9 +440,39 @@ async function assign(slot) {
   loadSlots(true);
 }
 
+let voiceSeen = 0;
+async function loadVoice() {
+  const v = await api("/api/voice");
+  if (!v.commands) return;
+  const list = $("voiceList");
+  list.innerHTML = v.commands.map((c, i) => {
+    const now = v.training === i;
+    const state = now ? `training: take ${v.take + 1} of ${v.takes_needed}` : c.takes >= v.takes_needed ? `trained (${c.takes} takes)` : c.takes ? `${c.takes} of ${v.takes_needed} takes` : "not trained";
+    const off = v.training >= 0 ? "disabled" : "";
+    const more = c.takes >= v.takes_needed ? `<button class="btn" data-more="${i}" ${off}>Add ${v.takes_needed} more</button>` : "";
+    return `<div class="voice-row"><b>${c.name}</b> <span class="muted">${state}</span> <button class="btn" data-train="${i}" ${off}>${c.takes ? "Train again" : "Train"}</button>${more}</div>`;
+  }).join("");
+  list.querySelectorAll("[data-train], [data-more]").forEach(b => b.onclick = async () => {
+    const r = await api("/api/voice", b.dataset.more ? {command: +b.dataset.more, more: true} : {command: +b.dataset.train});
+    if (!r.ok) setStatus($("voiceMsg"), r.error || "Could not start training", false);
+    loadVoice();
+  });
+  $("voiceCancel").classList.toggle("hidden", v.training < 0);
+  if (!v.ready) setStatus($("voiceMsg"), "Microphone: " + (v.error || "not ready"), false);
+  else if (v.last && v.last.id !== voiceSeen) {
+    voiceSeen = v.last.id;
+    const d = v.last.distance >= 0 ? ` (distance ${v.last.distance}, next ${v.last.second}, ${v.last.frames} frames, peak ${v.last.peak})` : ` (${v.last.frames} frames, peak ${v.last.peak})`;
+    setStatus($("voiceMsg"), (v.last.heard ? v.last.heard + ": " : "") + v.last.action + d, !!v.last.heard);
+  }
+}
+$("voiceCancel").onclick = async () => { await api("/api/voice", {cancel: true}); loadVoice(); };
+$("voiceClear").onclick = async () => { await api("/api/voice", {clear: -1}); loadVoice(); };
+
 async function refresh() {
   try {
     status = await api("/api/status");
+    $("voiceCard").classList.toggle("hidden", !status.voice);
+    if (status.voice && $("settings").classList.contains("on")) loadVoice();
     renderHeader(); renderTarget(); renderScan(); renderSlots();
     followSlots();
     loadSlots(false);
@@ -726,7 +764,7 @@ function displaySettings() {
 function showDisplay() {
   const type = $("dispType").value;
   document.querySelectorAll(".disp").forEach(e => e.classList.toggle("hidden", type === "none" ||
-    (e.classList.contains("oled") && (type.startsWith("cyd") || type === "c6-lcd147" || type === "lcd19" || type === "lcd114")) ||
+    (e.classList.contains("oled") && (type.startsWith("cyd") || type === "c6-lcd147" || type === "lcd19" || type === "lcd114" || type === "c6-lcd169")) ||
     (e.classList.contains("flip") && type === "lcd1602")));
   const d = status && status.display;
   setStatus($("dispMsg"), d && d.error ? d.error : "", d ? !d.error : undefined);

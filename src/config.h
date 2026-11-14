@@ -118,6 +118,10 @@ struct PrinterConfig {
     // fixed head: nothing there can ask, and a head's own reader works the
     // same way. A single slot needs no asking either.
     bool canAsk() const { return model != Model::SnapmakerU1 && slotCount() > 1; }
+    // What the reader's screens offer: Spoolman has no slots at all, and
+    // Ask only where the printer's own screen asks (FF_NFC).
+    bool hasSlots() const { return model != Model::Spoolman; }
+    bool screenAsk() const { return method == Method::FfNfc && canAsk(); }
     uint16_t effectivePort() const;
     String baseUrl() const;
 };

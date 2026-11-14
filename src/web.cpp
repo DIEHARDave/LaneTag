@@ -9,6 +9,7 @@
 #include "discovery.h"
 #include "ota.h"
 #include "version.h"
+#include "voice.h"
 #include "web_page.h"
 
 namespace {
@@ -102,6 +103,9 @@ void handleStatus() {
         display["ok"] = app.display.enabled();
         display["error"] = app.display.error();
     }
+#ifdef HAS_VOICE
+    doc["voice"] = true;
+#endif
     doc["active"] = app.config.active;
     JsonArray printers = doc["printers"].to<JsonArray>();
     for (auto &p : app.config.printers) {
@@ -327,6 +331,126 @@ void handleFound() {
     sendJson(200, doc);
 }
 
+#ifdef HAS_VOICE
+void handleVoice() {
+    if (!authorized()) return;
+    JsonDocument doc;
+    doc["ok"] = true;
+    doc["ready"] = voice::ready();
+    if (voice::error().length()) doc["error"] = voice::error();
+    doc["training"] = voice::training();
+    doc["take"] = voice::trainingTake();
+    doc["takes_needed"] = voice::TAKES;
+    doc["takes_max"] = voice::MAX_TAKES;
+    JsonArray commands = doc["commands"].to<JsonArray>();
+    for (int c = 0; c < voice::COMMAND_COUNT; c++) {
+        JsonObject o = commands.add<JsonObject>();
+        o["name"] = voice::commandName(c);
+        o["takes"] = voice::takes(c);
+    }
+    const voice::Result &last = voice::last();
+    if (last.id) {
+        JsonObject o = doc["last"].to<JsonObject>();
+        o["id"] = last.id;
+        o["heard"] = last.heard;
+        o["action"] = last.action;
+        o["distance"] = last.distance;
+        o["second"] = last.second;
+        o["frames"] = last.frames;
+        o["peak"] = last.peak;
+    }
+    sendJson(200, doc);
+}
+
+// {"command": n} to train it, {"cancel": true}, or {"clear": n} (-1: all).
+void handleVoicePost() {
+    if (!authorized()) return;
+    JsonDocument doc;
+    if (!readBody(doc)) return;
+    if (doc["cancel"] | false) {
+        voice::cancelTraining();
+    } else if (!doc["clear"].isNull()) {
+        voice::clear(doc["clear"] | -1);
+    } else {
+        int command = doc["command"] | -1;
+        if (command < 0 || command >= voice::COMMAND_COUNT) {
+            sendError(400, "no such command");
+            return;
+        }
+        if (!voice::ready()) {
+            sendError(400, voice::error().length() ? voice::error() : String("the microphone is not ready"));
+            return;
+        }
+        voice::train(command, doc["more"] | false);
+    }
+    JsonDocument reply;
+    reply["ok"] = true;
+    sendJson(200, reply);
+}
+
+// POST /api/voice/take?command=n&take=t with a WAV file (16 kHz mono
+// 16-bit, as /api/voice/last.wav gives): a take made from it.
+size_t uploadedSamples = 0;
+String uploadError;
+
+void handleVoiceTakeChunk() {
+    HTTPUpload &up = server.upload();
+    int16_t *buffer = voice::recordBuffer();
+    size_t capacity = voice::recordCapacity() * 2;
+    static size_t bytes = 0, skip = 0;
+    if (up.status == UPLOAD_FILE_START) {
+        bytes = 0;
+        skip = 44;      // the WAV header
+        uploadError = buffer ? "" : "not enough memory";
+    } else if (up.status == UPLOAD_FILE_WRITE && buffer) {
+        const uint8_t *data = up.buf;
+        size_t len = up.currentSize;
+        size_t drop = std::min(skip, len);
+        skip -= drop;
+        data += drop;
+        len -= drop;
+        len = std::min(len, capacity - bytes);
+        memcpy((uint8_t *)buffer + bytes, data, len);
+        bytes += len;
+    } else if (up.status == UPLOAD_FILE_END) {
+        uploadedSamples = bytes / 2;
+    }
+}
+
+void handleVoiceTake() {
+    if (!authorized()) return;
+    if (uploadError.length()) {
+        sendError(400, uploadError);
+        return;
+    }
+    String error = voice::storeTake(server.arg("command").toInt(), server.arg("take").toInt(), uploadedSamples);
+    if (error.length()) {
+        sendError(400, error);
+        return;
+    }
+    JsonDocument reply;
+    reply["ok"] = true;
+    reply["takes"] = voice::takes(server.arg("command").toInt());
+    sendJson(200, reply);
+}
+
+void handleVoiceWav() {
+    if (!authorized()) return;
+    if (!voice::sampleCount()) {
+        sendError(404, "nothing recorded yet");
+        return;
+    }
+    uint8_t header[44];
+    voice::wavHeader(header);
+    server.setContentLength(voice::wavSize());
+    server.send(200, "audio/wav", "");
+    server.sendContent((const char *)header, sizeof(header));
+    const char *data = (const char *)voice::samples();
+    size_t bytes = voice::sampleCount() * 2;
+    for (size_t sent = 0; sent < bytes; sent += 4096) server.sendContent(data + sent, std::min<size_t>(4096, bytes - sent));
+}
+#endif
+
 void handleRestart() {
     if (!authorized()) return;
     JsonDocument reply;
@@ -419,6 +543,12 @@ void webBegin() {
     server.on("/api/discover", HTTP_POST, handleDiscover);
     server.on("/api/discover", HTTP_GET, handleFound);
     server.on("/api/restart", HTTP_POST, handleRestart);
+#ifdef HAS_VOICE
+    server.on("/api/voice", HTTP_GET, handleVoice);
+    server.on("/api/voice", HTTP_POST, handleVoicePost);
+    server.on("/api/voice/last.wav", HTTP_GET, handleVoiceWav);
+    server.on("/api/voice/take", HTTP_POST, handleVoiceTake, handleVoiceTakeChunk);
+#endif
     server.on("/api/ota", HTTP_POST, handleOtaStart);
     server.on("/api/ota", HTTP_GET, handleOtaState);
     server.on("/update", HTTP_POST, handleUpdateDone, handleUpdateUpload);

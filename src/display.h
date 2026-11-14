@@ -10,11 +10,12 @@
 
 #include "reader.h"
 
-enum class DisplayType : uint8_t { None = 0, SSD1306 = 1, SH1106 = 2, CydIli9341 = 3, CydSt7789 = 4, C6Lcd147 = 5, Lcd1602 = 6, Lcd19 = 7, Lcd114 = 8 };
+enum class DisplayType : uint8_t { None = 0, SSD1306 = 1, SH1106 = 2, CydIli9341 = 3, CydSt7789 = 4, C6Lcd147 = 5, Lcd1602 = 6, Lcd19 = 7, Lcd114 = 8, Lcd169 = 9 };
 
 inline bool isTft(DisplayType type) {
     return type == DisplayType::CydIli9341 || type == DisplayType::CydSt7789 || type == DisplayType::C6Lcd147 ||
-           type == DisplayType::Lcd19 || type == DisplayType::Lcd114;
+           type == DisplayType::Lcd19 || type == DisplayType::Lcd114 ||
+           type == DisplayType::Lcd169;
 }
 
 struct DisplayConfig {

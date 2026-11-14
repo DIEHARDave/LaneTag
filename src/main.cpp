@@ -40,6 +40,7 @@
 #include "sleep.h"
 #include "spoolman.h"
 #include "version.h"
+#include "voice.h"
 
 App app;
 
@@ -365,6 +366,11 @@ PrinterReply App::resendLast(int index) {
 }
 
 void setup() {
+#ifdef BOARD_LCD169
+    // Keeps the board's power on when it runs from its battery.
+    pinMode(15, OUTPUT);
+    digitalWrite(15, HIGH);
+#endif
     Serial.begin(115200);
     delay(200);
     // 1 power-on, 3 software restart, 4 crash, 5-7 watchdog, 9 brownout.
@@ -375,6 +381,9 @@ void setup() {
     if (app.config.buttonPin >= 0) pinMode(app.config.buttonPin, INPUT_PULLUP);
     app.reader.begin(app.config.reader);
     app.display.begin(app.config.display, app.config.reader);
+#ifdef HAS_VOICE
+    voice::begin();
+#endif
     startWifi();
     // The clock, for printers whose LAN handshake is signed over the time
     // (Anycubic); SNTP keeps trying in the background.
@@ -391,6 +400,9 @@ void loop() {
     app.feedback.loop();
     app.display.loop();
     buttonLoop();
+#ifdef HAS_VOICE
+    voice::loop();
+#endif
     sleepLoop();
     if (app.apMode && app.config.wifiSsid.length()) {
         if (WiFi.status() == WL_CONNECTED) {

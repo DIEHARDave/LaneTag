@@ -130,7 +130,8 @@ work too.
   [The CYD touch screen](#the-cyd-touch-screen). Wiring:
   [CYD](#cyd-esp32-2432s028).
 * Or a **Waveshare ESP32-C6-LCD-1.47** or **ESP32-C5-LCD-1.47**: a small
-  board with a 1.47" color screen, see
+  board with a 1.47" color screen (the **ESP32-C6-Touch-LCD-1.47** adds
+  touch), see
   [The Waveshare ESP32-C6-LCD-1.47 and ESP32-C5-LCD-1.47](#the-waveshare-esp32-c6-lcd-147-and-esp32-c5-lcd-147).
 * Or an **ideaspark ESP32 1.9" LCD** or **1.14" LCD**: a classic ESP32 with
   a small color screen, see
@@ -145,6 +146,8 @@ work too.
 | ESP32-2432S028 (CYD, ST7789 version) | `cyd` | 2.8" 320x240 touch | PN532 (HSU) |
 | Waveshare ESP32-C5-LCD-1.47 | `esp32-c5-lcd` | 1.47" 172x320 | PN532 (HSU) |
 | Waveshare ESP32-C6-LCD-1.47 | `esp32-c6-lcd` | 1.47" 172x320 | PN532 |
+| Waveshare ESP32-C6-Touch-LCD-1.47 | `esp32-c6-touch-lcd` | 1.47" 172x320 touch | none yet |
+| Waveshare ESP32-C6-LCD-1.69 | `esp32-c6-lcd169` | 1.69" 240x280 | none yet |
 | ideaspark ESP32 1.9" LCD | `ideaspark-lcd19` | 1.9" 170x320 | PN532 |
 | ideaspark ESP32 1.14" LCD | `ideaspark-lcd114` | 1.14" 135x240 | PN532 |
 | ESP32-C6 DevKit / SuperMini | `esp32-c6` | none | PN532 |
@@ -314,6 +317,8 @@ pio run -e esp32-c6 -t upload      # ESP32-C6
 pio run -e esp32-c5 -t upload      # ESP32-C5
 pio run -e cyd -t upload           # ESP32-2432S028 (CYD)
 pio run -e esp32-c6-lcd -t upload  # Waveshare ESP32-C6-LCD-1.47
+pio run -e esp32-c6-touch-lcd -t upload  # Waveshare ESP32-C6-Touch-LCD-1.47
+pio run -e esp32-c6-lcd169 -t upload  # Waveshare ESP32-C6-LCD-1.69
 pio run -e esp32-c5-lcd -t upload  # Waveshare ESP32-C5-LCD-1.47
 pio run -e ideaspark-lcd19 -t upload  # ideaspark ESP32 1.9" LCD
 pio run -e ideaspark-lcd114 -t upload # ideaspark ESP32 1.14" LCD
@@ -722,6 +727,58 @@ On the **ESP32-C5-LCD-1.47** the screen uses GPIO 6, 7, 10, 23, 24 and 26.
 The PN532 goes on the header's RXD and TXD pins: PN532 TXD to **RXD**
 (GPIO 12), RXD to **TXD** (GPIO 11), VCC to 3V3 and GND to GND, or over I2C
 on GPIO 2 (SDA) and 3 (SCL). The WS2812 is on GPIO 8 here too.
+
+The **ESP32-C6-Touch-LCD-1.47** (`esp32-c6-touch-lcd` build) has a JD9853
+screen of the same size with an AXS5106L touch controller, so it has the
+CYD's touch buttons: tap the printer name for the next printer, the bottom
+row for the fixed slot, and a waiting scan's slot buttons (they take the
+bottom row while it waits). The screen uses GPIO 1, 2, 14, 15, 22 and 23,
+the touch controller 20 and the I2C bus on GPIO 18 (SDA) and 19 (SCL). The
+PN532 goes on TX/RX in HSU mode as on the other C6 board (TXD to GPIO 17,
+RXD to GPIO 16), or on that I2C bus (it then shares 18 and 19 with the
+touch controller). This board has no RGB LED.
+
+The **ESP32-C6-LCD-1.69** (`esp32-c6-lcd169` build) has a 1.69" 240x280
+ST7789, shown sideways as 280x240 with the CYD's full-size screens (without
+touch: the BOOT button changes the slot). The screen uses GPIO 1-6, the
+audio 19-23, GPIO 15 keeps the board on when it runs from its battery and
+18 is the PWR button. The PN532 goes on GPIO 17 (to the PN532's TXD) and 16
+(to its RXD) in HSU mode, or on the I2C bus on GPIO 8 (SDA) and 7 (SCL),
+which it shares with the board's motion sensor, clock and audio codec. No
+RGB LED.
+
+#### Voice commands (ESP32-C6-LCD-1.69)
+
+The 1.69" board has a microphone, so the `esp32-c6-lcd169` build takes
+voice commands: hold the **PWR** button, say a command, let go. The bottom
+of the screen shows "Listening..." and then what it heard and did:
+
+| Command | Does |
+|---|---|
+| Next printer / Previous printer | switches the active printer |
+| Lane 1 ... Lane 4 | sets the slot scans go to; with a scan waiting for its slot, puts it there |
+| Ask | scans ask for their slot (FF_NFC printers) |
+
+Recognition runs on the board itself, with no server or internet: it
+compares what it hears with recordings of your own voice (MFCC features and
+dynamic time warping, in fixed point since the C6 has no FPU). Train it
+under **Settings > Voice commands**: click **Train** for a command, then
+hold PWR and say it three times. Any words work, in any language. **Add 3
+more** keeps up to six takes per command; takes from another day, or with
+the board held differently, make it noticeably surer. It knows the voice
+it was trained with. A press shorter than about a third of a second is
+ignored, and an answer that is too close between two commands shows "Not
+sure what was said" instead of doing the wrong thing.
+
+`/api/voice/last.wav` is the last recording, and
+`POST /api/voice/take?command=N&take=T` with a WAV file (`curl -F
+file=@take.wav`) stores a take made from a recording.
+[tools/voice](tools/voice) has a PC build of the matcher (`eval.cpp`) to
+test settings against recorded takes, and `capture.sh` to save every
+attempt's recording while training.
+
+This build uses the 8 MB partition layout (1.5 MB for the voice takes), so
+the first install is over USB; updates after that work over Wi-Fi.
 
 ### The ideaspark ESP32 1.9" and 1.14" LCD
 
