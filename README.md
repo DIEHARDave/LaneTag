@@ -112,6 +112,15 @@ work too.
 
   All three read ISO 14443A tags: NTAG21x, MIFARE Ultralight, MIFARE
   Classic and Type 4.
+
+  **Boards with a built-in color screen take a PN532 on HSU or I2C only.**
+  On the Waveshare ESP32-C5/C6 LCD boards and the ideaspark 1.9" and 1.14"
+  LCD boards the screen has the board's SPI bus, so the **RC522**, the
+  **PN5180** and the **PN532 in SPI mode** cannot be used there (the web
+  page refuses them). That also means no OpenPrintTag tags on those boards,
+  since only the PN5180 reads them. The **CYD** is different: its screen
+  has a bus of its own, so SPI readers can go on the SD card slot's pins
+  (GPIO 18, 19, 23 and 5), though that has not been tried.
 * ESP32-C3 SuperMini boards have a weak antenna. If the reader drops off
   your network, change **Settings > Wi-Fi transmit power**: the usual advice
   of 8.5 dBm lost most packets on the tested board, which worked well from
