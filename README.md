@@ -30,36 +30,35 @@ material and color. It works with:
   Zmod or Forge-X.
 
 With no printer at all, it is a stand-alone reader for **Spoolman** (find,
-bind and add spools; tested on an ESP32-C3 with Spoolman 0.27.0). Moonraker
-lane data is tested on real Klipper printers; the Anycubic, Bambu, Creality,
-Happy Hare, AFC and Qidi methods are not yet tested on real printers.
+bind and add spools; tested on an ESP32-C3 with Spoolman 0.27.0). See
+[What has been tested](#what-has-been-tested).
 
 One reader can serve several printers and needs no USB port on the printer.
 Everything is set up on the reader's own web page: Wi-Fi, printers and their
 IP addresses, and how each printer is reached.
 
-> **Status: early release.** Tested on an **ESP32-C3 SuperMini** with a
-> **PN532 over I2C & HSU**: OpenSpool (NTAG) and Snapmaker (MIFARE Classic, keys
-> derived from the UID) tags, assigned on a **Creator 5** and an **AD5X**
-> running Zmod and FF_NFC, from the printer's prompt and with
-> the reader fixed to one slot, and to an **AD5X's stock screen** through the stock
-> API, and to an unmodified
-> **Creator 5 Pro on stock firmware**. The firmware
-> builds for ESP32, ESP32-S3, ESP32-C3, ESP32-C6 and ESP32-C5 without warnings. Its decoders and
-> MIFARE key derivation match [FF_NFC](https://github.com/DIEHARDave/FF_NFC)'s
-> (identical results for every tag in FF_NFC's decoder tests, identical
-> Bambu, Creality and Snapmaker keys). **Bambu Lab RFID tags** (MIFARE
-> Classic, keys derived from the UID) are tested and read correctly. Not
-> yet tried: Creality tags, a factory-fresh printer, and
-> the **Zmod basic** method. The PN532 works over I2C and HSU (ESP32-C3 and
-> classic ESP32; its SPI mode builds but has not been run on hardware yet),
-> and the RC522 read tags on an ESP32-C3. On a **CYD**
-> (ESP32-2432S028, ST7789 version) with a PN532 over HSU, scans reach an
-> AD5X with FF_NFC, and its printer, fixed-slot and "put the waiting scan
-> here" touch buttons all work. **PN5180
-> support has not been run on hardware yet** (it builds; its driver is
-> written from the NXP datasheet, its command layer follows FF_NFC's). The OpenPrintTag decoder gives the same results as
-> FF_NFC's on its six OpenPrintTag test dumps. Reports are welcome.
+## What has been tested
+
+LaneTag is an early release. The Flashforge printers were the first ones it
+was built and tested on; the newer printer methods are tested against
+emulated printers and still wait for a run on a real one. Reports are
+welcome, whether it worked or not.
+
+| Area | Tested on real hardware | Not tried yet |
+|------|-------------------------|---------------|
+| **Flashforge AD5X / Creator 5** | FF_NFC on Zmod (the printer's slot prompt and a fixed slot); stock firmware on an AD5X and an unmodified Creator 5 Pro | Zmod basic; a factory-fresh printer |
+| **Klipper** | Moonraker lane data; AFC (confirmed by a user, next-lane mode) | Happy Hare |
+| **Snapmaker U1** | Extended firmware | Stock firmware |
+| **Bambu, Creality, Qidi, Anycubic** | | All four (emulated printers only) |
+| **Spoolman (no printer)** | Spoolman 0.27.0 | |
+| **Readers** | PN532 over I2C and HSU (ESP32-C3, classic ESP32); RC522 (ESP32-C3) | PN532 over SPI; PN5180 (it builds; its driver follows the NXP datasheet and FF_NFC's command layer) |
+| **Tags** | OpenSpool (NTAG), Snapmaker and Bambu Lab (MIFARE Classic, keys derived from the UID) | Creality tags; OpenTag3D and TigerTag; OpenPrintTag on a real PN5180 |
+| **Boards** | See [Tested boards and screens](#tested-boards-and-screens); the CYD's touch buttons work with an AD5X on FF_NFC | ESP32-S3 |
+
+The firmware builds for ESP32, ESP32-S3, ESP32-C3, ESP32-C6 and ESP32-C5
+without warnings. Its tag decoders and MIFARE key derivation give the same
+results as [FF_NFC](https://github.com/DIEHARDave/FF_NFC)'s for every tag
+in FF_NFC's decoder tests, including its six OpenPrintTag dumps.
 
 ## Printer methods
 
