@@ -145,12 +145,12 @@ work too.
 | Classic ESP32 (ideaspark 0.96" OLED V3.0) | `esp32dev` | its SSD1306 OLED | PN532 (HSU) |
 | ESP32-2432S028 (CYD, ST7789 version) | `cyd` | 2.8" 320x240 touch | PN532 (HSU) |
 | Waveshare ESP32-C5-LCD-1.47 | `esp32-c5-lcd` | 1.47" 172x320 | PN532 (HSU) |
-| Waveshare ESP32-C6-LCD-1.47 | `esp32-c6-lcd` | 1.47" 172x320 | PN532 |
-| Waveshare ESP32-C6-Touch-LCD-1.47 | `esp32-c6-touch-lcd` | 1.47" 172x320 touch | none yet |
-| Waveshare ESP32-C6-LCD-1.69 | `esp32-c6-lcd169` | 1.69" 240x280 | none yet |
-| ideaspark ESP32 1.9" LCD | `ideaspark-lcd19` | 1.9" 170x320 | PN532 |
-| ideaspark ESP32 1.14" LCD | `ideaspark-lcd114` | 1.14" 135x240 | PN532 |
-| ESP32-C6 DevKit / SuperMini | `esp32-c6` | none | PN532 |
+| Waveshare ESP32-C6-LCD-1.47 | `esp32-c6-lcd` | 1.47" 172x320 | PN532 (HSU) |
+| Waveshare ESP32-C6-Touch-LCD-1.47 | `esp32-c6-touch-lcd` | 1.47" 172x320 touch | PN532 (HSU) |
+| Waveshare ESP32-C6-LCD-1.69 | `esp32-c6-lcd169` | 1.69" 240x280 | PN532 (HSU) |
+| ideaspark ESP32 1.9" LCD | `ideaspark-lcd19` | 1.9" 170x320 | PN532 (HSU) |
+| ideaspark ESP32 1.14" LCD | `ideaspark-lcd114` | 1.14" 135x240 | PN532 (HSU) |
+| ESP32-C6 DevKit / SuperMini | `esp32-c6` | none | PN532 (HSU) |
 
 The ESP32-S3 build and the SH1106 OLED and PN5180 drivers have not been
 run on hardware yet. Reports of other boards are welcome.
