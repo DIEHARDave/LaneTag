@@ -10,29 +10,33 @@
 > **Parts:** the printers, boards, readers and other gear that go with this project are listed at [projects.die-hard.net/gear](https://projects.die-hard.net/gear) (Amazon affiliate links).
 
 A Wi-Fi NFC/RFID filament tag reader for 3D printers, built from an
-**ESP32** and a **PN532**, **RC522** or **PN5180** module. Printers
-supported today: the **Flashforge AD5X**, the **Flashforge Creator 5**,
-the **Snapmaker U1** (stock firmware, or paxx12's
-[Extended firmware](https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware)
-for Spoolman matching),
-**Bambu Lab** printers with an AMS or external spool in LAN mode,
-**Creality K1 / K2 / Hi** printers with a CFS on stock firmware,
-**Anycubic Kobra** printers (Kobra 3 / S1 generation) with an ACE in LAN
-mode, **Qidi Plus4 / Q2 / Max4** printers with a Qidi Box on stock firmware,
-and
-**Klipper** printers through Moonraker: **Happy Hare** MMUs, **AFC** units
-(Box Turtle, Night Owl, ...) and plain Moonraker lane data, which is also
-what the **Flashforge AD5M** on Zmod or Forge-X gets. With no printer at
-all, it can be a stand-alone reader for **Spoolman** (find, bind and add
-spools; tested on an ESP32-C3 with Spoolman 0.27.0). Moonraker lane
-data is tested on real Klipper printers; the Anycubic, Bambu, Creality,
+**ESP32** and a **PN532**, **RC522** or **PN5180** module. Hold a spool's
+tag to the reader and the printer's slot, lane or tray gets the spool's
+material and color. It works with:
+
+* **Klipper** printers through Moonraker: **Happy Hare** MMUs, **AFC** units
+  (Box Turtle, Night Owl, ...) and plain Moonraker lane data on any Klipper
+  printer;
+* **Bambu Lab** printers with an AMS or the external spool, in LAN mode;
+* **Creality K1 / K2 / Hi** printers with a CFS, on stock firmware;
+* **Qidi Plus4 / Q2 / Max4** printers with a Qidi Box, on stock firmware;
+* **Anycubic Kobra** printers (Kobra 3 / S1 generation) with an ACE, in
+  LAN mode;
+* the **Snapmaker U1**, on stock firmware or paxx12's
+  [Extended firmware](https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware)
+  (for Spoolman matching);
+* the **Flashforge AD5X** and **Creator 5**, on stock firmware,
+  [Zmod](https://github.com/ghzserg/zmod) or Kiln OS, and the **AD5M** on
+  Zmod or Forge-X.
+
+With no printer at all, it is a stand-alone reader for **Spoolman** (find,
+bind and add spools; tested on an ESP32-C3 with Spoolman 0.27.0). Moonraker
+lane data is tested on real Klipper printers; the Anycubic, Bambu, Creality,
 Happy Hare, AFC and Qidi methods are not yet tested on real printers.
 
-Hold a spool's tag to the reader and the printer's slot gets the spool's
-material and color. One reader can serve several printers, running stock
-firmware or [Zmod](https://github.com/ghzserg/zmod), and needs no USB port on
-the printer. Everything is set up on the reader's own web page: Wi-Fi,
-printers and their IP addresses, and how each printer is reached.
+One reader can serve several printers and needs no USB port on the printer.
+Everything is set up on the reader's own web page: Wi-Fi, printers and their
+IP addresses, and how each printer is reached.
 
 > **Status: early release.** Tested on an **ESP32-C3 SuperMini** with a
 > **PN532 over I2C & HSU**: OpenSpool (NTAG) and Snapmaker (MIFARE Classic, keys
@@ -63,19 +67,19 @@ Each printer on the reader's list uses one of these methods:
 
 | Printer & Method | Printer runs | What a scan does |
 |------------------|--------------|------------------|
-| **Flashforge AD5X / Creator 5**<br><br>FF_NFC plugin | Zmod (AD5X, Creator 5) or Kiln OS (AD5X) with the [FF_NFC](https://github.com/DIEHARDave/FF_NFC) plugin | The **whole tag read** goes through Moonraker to the plugin (no extra port or service on the printer), which handles it exactly like a tag on a USB reader plugged into the printer: it decodes every format FF_NFC knows, looks the spool up in **Spoolman** (spool ID on the tag, or the tag's UID), shows its **slot popup on the printer's screen** (or takes the slot you insert filament into), sets the slot (on Zmod through zmod_afclite's `SET_SPOOL_ID` or Zmod's `CHANGE_ZCOLOR`, on Kiln OS with `IFS_SET_MATERIAL`), and fills in Moonraker's **lane_data** for OrcaSlicer. The reader's web page can pick the slot too. |
-| **Flashforge AD5X / Creator 5**<br><br>Zmod basic | Zmod, no plugin | Material and color go to the slot through Moonraker (`CHANGE_ZCOLOR`), snapped to Zmod's material list and color palette, and the slot's **lane_data** entry gets the material, color, vendor, temperatures and the tag's Spoolman spool ID if it carries one. No Spoolman lookup. |
-| **Flashforge AD5X / Creator 5**<br><br>Stock firmware | Flashforge firmware | Material and color through the printer's local API (`msConfig_cmd` on port 8898) - that is all the stock API offers. Needs the printer's **serial number** and **check code**. The stock screens can only draw their own 24 colors (a different set on each model), so the color is snapped to the closest one (CIEDE2000), and on the Creator 5 the material to its list. |
-| **Snapmaker U1**<br><br>Extended firmware | paxx12's [Extended firmware](https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware) | The scan reaches the head **as if the head's own RFID reader had read it**: the reader decodes the tag and posts it to Klipper's `filament_detect/set` endpoint through Moonraker, as the firmware's OpenRFID does (vendor "Generic" unless it is Snapmaker filament, so the slicer finds a profile). The screen, the slicer and the firmware's **SpoolLink** see it like any other read: with Spoolman set up in the firmware, SpoolLink looks the tag's UID up in Spoolman and loads that spool. A tag naming a Spoolman spool ID is bound to it with `SET_SPOOL_ID`; a tag with no filament data works when its UID is already bound to a spool. Nothing to install. Heads are not changed while the printer prints. Each reader is **always fixed to one head** (no "Ask"). |
-| **Snapmaker U1**<br><br>Stock firmware | Snapmaker stock firmware | The head gets the tag's **material, vendor and color** with Snapmaker's own `SET_PRINT_FILAMENT_CONFIG` through Moonraker, the way an edit on the printer's screen sets it (vendor "Snapmaker" with its subtype for Snapmaker filament, else "Generic", so the slicer finds a profile). No Spoolman matching (that needs the Extended firmware's SpoolLink). Heads are not changed while the printer prints. Each reader is **always fixed to one head**. |
-| **Bambu Lab (X1, P1, A1, ...)**<br><br>LAN mode (MQTT) | Bambu firmware with LAN mode on | The tray's **material, color, nozzle temperatures and filament preset** go to the printer's own MQTT broker (TLS on port 8883, user `bblp`, the printer's **access code**) with `ams_filament_setting`, as Bambu Studio sets a tray. The preset is Bambu's own one from a Bambu tag, otherwise Bambu Studio's matching **Generic** preset (Generic PLA, PLA Silk, PETG-CF, ...). Each reader serves **one AMS** (trays A1-A4, B1-B4, ...) or the **external spool**. Needs the printer's **serial number** and **access code**; newer Bambu firmware only takes commands from other programs with **LAN Only mode and Developer Mode** on. No Spoolman. |
-| **Anycubic Kobra 3 / 3 V2 / 3 Max / S1 / S1 Max**<br><br>LAN mode (ACE) | An ACE Pro or ACE 2, LAN mode on | The slot's **material and color** go to the printer's own MQTT broker (TLS, port 9883) with `multiColorBox` `setInfo`, as Anycubic Slicer Next sets a slot. The reader logs in by itself through the printer's LAN handshake (port 18910), so there is **nothing to enter but the IP address**; the handshake is signed with the time, which the reader takes from the internet (NTP) or else from the printer. The material is mapped to the ACE's own list (PLA, PETG, ABS, ASA, HIPS, PA, PACF, PC); the ACE takes no TPU. Each reader serves **one ACE** (slots 1-4; ACE 2 etc. for more than one). Slots are left alone while the printer is busy. No Spoolman. |
-| **Qidi Plus4 / Q2 / Max4**<br><br>Stock firmware (Box) | A Qidi Box, stock firmware | The slot gets the **filament profile, color and vendor** the way the Box's own RFID reader and Qidi Studio set them: three `SAVE_VARIABLE`s through Moonraker (stock Klipper, nothing to install), naming rows of the printer's own `officiall_filas_list.cfg`. The profile is the printer's entry for the tag's material, one named for the tag's modifier first (PLA Silk, PLA Matte, ...), then the Basic one; the color is the closest of the Box's palette (CIEDE2000), and the vendor the tag's brand when the Box knows it, else Generic. Each reader serves **one Box** (slots 1-4). Not while printing. Firmware that stores the newer filament codes (seen on an updated Q2) is refused with a message until that format is known. No Spoolman. |
-| **Creality K1 / K1 Max / K1C / K2 / Hi**<br><br>Stock firmware (CFS) | A CFS, stock firmware | The slot's **material, color, nozzle temperatures** and the matching **entry of the printer's material library** go over the WebSocket Creality Print uses (port 9999, `modifyMaterial`), so the printer's screen and the slicer see it as if it had been picked in Creality Print. The library entry is the tag's own material on a Creality tag, else the tag's brand and material, else a Generic one of the material (its pressure advance comes along). Each reader serves **one CFS** (slots 1A-1D, 2A-2D, ...) or the **external spool**. Like Creality Print it leaves slots alone while the printer prints or the CFS feeds, and never touches a slot holding a Creality RFID spool (the CFS reads that tag itself). Nothing to enter but the IP address. No Spoolman. |
 | **Klipper**<br><br>Happy Hare MMU | Klipper with [Happy Hare](https://github.com/moggieuk/Happy-Hare) | The gate gets the tag's material, color, name, vendor and temperature through Moonraker (`MMU_GATE_MAP`), plus the tag's UID (Happy Hare 4 keeps it with the gate). With Happy Hare's Spoolman support on, a tag naming a Spoolman spool assigns that spool to the gate; in **pull** mode, where the gate map comes from Spoolman, only such tags can change a gate (`MMU_SPOOLMAN`). OrcaSlicer reads Happy Hare's gate map by itself. Each reader covers four gates (0-3, 4-7, ...). |
 | **Klipper**<br><br>AFC | Klipper with [AFC](https://github.com/AFCProject/AFC-Klipper-Add-On) (Box Turtle, Night Owl, ...) | A tag naming a Spoolman spool is assigned to the lane with `SET_SPOOL_ID` (when AFC has Spoolman), and AFC fills in material, color, temperatures and weight from Spoolman; other tags set the lane's material, color and temperatures (`SET_MATERIAL`, `SET_COLOR`, `AFC_SET_SPOOL_TEMP`). AFC writes the lane's lane_data for OrcaSlicer itself. Each reader covers four lanes in AFC's order (whatever they are named). With **Tags naming a Spoolman spool: Go to the next lane loaded**, no lane is picked: the spool ID goes to AFC's `SET_NEXT_SPOOL_ID`, and AFC gives it to whichever lane you load next (other tags still go to the reader's slot). |
-| **Spoolman (no printer)**<br><br>Spoolman API | A [Spoolman](https://github.com/Donkie/Spoolman) server (port 7912) | No printer: the reader is a **Spoolman station** (by the shelf, the dryer, the scale). The spool is the one whose ID is on the tag, else the one with the tag's UID in its **Card UIDs** field (or nfc2klipper's `nfc_id`), else the only spool with the tag's brand, material and color, and the tag's UID is then added to its Card UIDs. With **Add them as new spools** (the default), a tag with filament data that matches nothing becomes a new spool (vendor and filament reused when Spoolman has them, "Card UIDs" field created if missing). An optional **location** is set on every scanned spool. The reply names the spool and its remaining weight. These are the UIDs FF_NFC, zmod_afclite and the U1's SpoolLink match, so spools bound here are found by those printers too. |
 | **Klipper**<br><br>Moonraker lane data | Any Klipper printer with Moonraker | The tool's entry in Moonraker's **lane_data** (read by OrcaSlicer's filament sync) gets the material, color, vendor, temperatures and Spoolman spool ID. On a printer with a **single lane**, a tag naming a Spoolman spool also makes it Moonraker's **active spool** (with Spoolman set up in Moonraker). Each reader covers up to four lanes (T0-T3, T4-T7, ...): one per extruder Klipper has, or as many as the printer's lane_data already lists when that is more (an AD5X's IFS feeds four lanes into one extruder). So a plain single-extruder printer only ever offers **T0**. Also works on Zmod printers (Creator 5, AD5X), next to their own methods. |
+| **Bambu Lab (X1, P1, A1, ...)**<br><br>LAN mode (MQTT) | Bambu firmware with LAN mode on | The tray's **material, color, nozzle temperatures and filament preset** go to the printer's own MQTT broker (TLS on port 8883, user `bblp`, the printer's **access code**) with `ams_filament_setting`, as Bambu Studio sets a tray. The preset is Bambu's own one from a Bambu tag, otherwise Bambu Studio's matching **Generic** preset (Generic PLA, PLA Silk, PETG-CF, ...). Each reader serves **one AMS** (trays A1-A4, B1-B4, ...) or the **external spool**. Needs the printer's **serial number** and **access code**; newer Bambu firmware only takes commands from other programs with **LAN Only mode and Developer Mode** on. No Spoolman. |
+| **Creality K1 / K1 Max / K1C / K2 / Hi**<br><br>Stock firmware (CFS) | A CFS, stock firmware | The slot's **material, color, nozzle temperatures** and the matching **entry of the printer's material library** go over the WebSocket Creality Print uses (port 9999, `modifyMaterial`), so the printer's screen and the slicer see it as if it had been picked in Creality Print. The library entry is the tag's own material on a Creality tag, else the tag's brand and material, else a Generic one of the material (its pressure advance comes along). Each reader serves **one CFS** (slots 1A-1D, 2A-2D, ...) or the **external spool**. Like Creality Print it leaves slots alone while the printer prints or the CFS feeds, and never touches a slot holding a Creality RFID spool (the CFS reads that tag itself). Nothing to enter but the IP address. No Spoolman. |
+| **Qidi Plus4 / Q2 / Max4**<br><br>Stock firmware (Box) | A Qidi Box, stock firmware | The slot gets the **filament profile, color and vendor** the way the Box's own RFID reader and Qidi Studio set them: three `SAVE_VARIABLE`s through Moonraker (stock Klipper, nothing to install), naming rows of the printer's own `officiall_filas_list.cfg`. The profile is the printer's entry for the tag's material, one named for the tag's modifier first (PLA Silk, PLA Matte, ...), then the Basic one; the color is the closest of the Box's palette (CIEDE2000), and the vendor the tag's brand when the Box knows it, else Generic. Each reader serves **one Box** (slots 1-4). Not while printing. Firmware that stores the newer filament codes (seen on an updated Q2) is refused with a message until that format is known. No Spoolman. |
+| **Anycubic Kobra 3 / 3 V2 / 3 Max / S1 / S1 Max**<br><br>LAN mode (ACE) | An ACE Pro or ACE 2, LAN mode on | The slot's **material and color** go to the printer's own MQTT broker (TLS, port 9883) with `multiColorBox` `setInfo`, as Anycubic Slicer Next sets a slot. The reader logs in by itself through the printer's LAN handshake (port 18910), so there is **nothing to enter but the IP address**; the handshake is signed with the time, which the reader takes from the internet (NTP) or else from the printer. The material is mapped to the ACE's own list (PLA, PETG, ABS, ASA, HIPS, PA, PACF, PC); the ACE takes no TPU. Each reader serves **one ACE** (slots 1-4; ACE 2 etc. for more than one). Slots are left alone while the printer is busy. No Spoolman. |
+| **Snapmaker U1**<br><br>Extended firmware | paxx12's [Extended firmware](https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware) | The scan reaches the head **as if the head's own RFID reader had read it**: the reader decodes the tag and posts it to Klipper's `filament_detect/set` endpoint through Moonraker, as the firmware's OpenRFID does (vendor "Generic" unless it is Snapmaker filament, so the slicer finds a profile). The screen, the slicer and the firmware's **SpoolLink** see it like any other read: with Spoolman set up in the firmware, SpoolLink looks the tag's UID up in Spoolman and loads that spool. A tag naming a Spoolman spool ID is bound to it with `SET_SPOOL_ID`; a tag with no filament data works when its UID is already bound to a spool. Nothing to install. Heads are not changed while the printer prints. Each reader is **always fixed to one head** (no "Ask"). |
+| **Snapmaker U1**<br><br>Stock firmware | Snapmaker stock firmware | The head gets the tag's **material, vendor and color** with Snapmaker's own `SET_PRINT_FILAMENT_CONFIG` through Moonraker, the way an edit on the printer's screen sets it (vendor "Snapmaker" with its subtype for Snapmaker filament, else "Generic", so the slicer finds a profile). No Spoolman matching (that needs the Extended firmware's SpoolLink). Heads are not changed while the printer prints. Each reader is **always fixed to one head**. |
+| **Flashforge AD5X / Creator 5**<br><br>Stock firmware | Flashforge firmware | Material and color through the printer's local API (`msConfig_cmd` on port 8898) - that is all the stock API offers. Needs the printer's **serial number** and **check code**. The stock screens can only draw their own 24 colors (a different set on each model), so the color is snapped to the closest one (CIEDE2000), and on the Creator 5 the material to its list. |
+| **Flashforge AD5X / Creator 5**<br><br>FF_NFC plugin | Zmod (AD5X, Creator 5) or Kiln OS (AD5X) with the [FF_NFC](https://github.com/DIEHARDave/FF_NFC) plugin | The **whole tag read** goes through Moonraker to the plugin (no extra port or service on the printer), which handles it exactly like a tag on a USB reader plugged into the printer: it decodes every format FF_NFC knows, looks the spool up in **Spoolman** (spool ID on the tag, or the tag's UID), shows its **slot popup on the printer's screen** (or takes the slot you insert filament into), sets the slot (on Zmod through zmod_afclite's `SET_SPOOL_ID` or Zmod's `CHANGE_ZCOLOR`, on Kiln OS with `IFS_SET_MATERIAL`), and fills in Moonraker's **lane_data** for OrcaSlicer. The reader's web page can pick the slot too. |
+| **Flashforge AD5X / Creator 5**<br><br>Zmod basic | Zmod, no plugin | Material and color go to the slot through Moonraker (`CHANGE_ZCOLOR`), snapped to Zmod's material list and color palette, and the slot's **lane_data** entry gets the material, color, vendor, temperatures and the tag's Spoolman spool ID if it carries one. No Spoolman lookup. |
+| **Spoolman (no printer)**<br><br>Spoolman API | A [Spoolman](https://github.com/Donkie/Spoolman) server (port 7912) | No printer: the reader is a **Spoolman station** (by the shelf, the dryer, the scale). The spool is the one whose ID is on the tag, else the one with the tag's UID in its **Card UIDs** field (or nfc2klipper's `nfc_id`), else the only spool with the tag's brand, material and color, and the tag's UID is then added to its Card UIDs. With **Add them as new spools** (the default), a tag with filament data that matches nothing becomes a new spool (vendor and filament reused when Spoolman has them, "Card UIDs" field created if missing). An optional **location** is set on every scanned spool. The reply names the spool and its remaining weight. These are the UIDs FF_NFC, zmod_afclite and the U1's SpoolLink match, so spools bound here are found by those printers too. |
 
 For the three Klipper methods, a tag **names a Spoolman spool** when the spool
 ID is written on it, or when its UID is linked to a spool in the Spoolman that
@@ -83,7 +87,7 @@ Moonraker uses (Spoolman 0.27's own tag links, or the spool's **Card UIDs** /
 `nfc_id` field). So tags you only linked in Spoolman, without writing to them,
 work too.
 
-> **Stock firmware and Zmod basic: give each printer a fixed slot.** Only
+> **Flashforge stock firmware and Zmod basic: give each printer a fixed slot.** Only
 > FF_NFC can show a "which slot?" popup on the printer's screen. With the
 > other two methods the printer cannot ask, so set **Slot for this reader**
 > on the Printers tab (new stock and Zmod basic printers start on slot 1):
@@ -424,58 +428,58 @@ name. `python tools/release.py [board ...]` writes the same files into
      45 seconds. Printers appear as they are found, each with an **Add**
      button that fills in a new printer with the model and method it found.
      Check the slot, enter any code it needs, and **Save**. It finds:
-     Moonraker printers, sorted by what Klipper loads (Zmod AD5X / Creator
-     5 / AD5M and whether FF_NFC is installed, Kiln OS AD5X with FF_NFC,
-     Snapmaker U1 Extended or
-     stock, Qidi Box, Happy Hare, AFC, else lane data); Flashforge stock
+     Moonraker printers, sorted by what Klipper loads (Happy Hare, AFC, Qidi
+     Box, Snapmaker U1 Extended or stock, Zmod AD5X / Creator 5 / AD5M and
+     whether FF_NFC is installed, Kiln OS AD5X with FF_NFC, else lane
+     data); Flashforge stock
      firmware by its own UDP discovery (fills in the serial number);
      Bambu printers by their SSDP announcements (fills in the serial
      number); Creality's WebSocket (port 9999), Anycubic's LAN handshake
      (port 18910) and Spoolman servers (port 7912). Printers that are off,
      asleep, or on another subnet do not show up.
-   * **FF_NFC plugin**: install or update FF_NFC on the printer (Zmod or
-     Kiln OS). The reader reaches it through Moonraker (port 7125); FF_NFC
-     adds endpoints to Moonraker's API rather than opening a port of its
-     own.
-   * **Zmod basic**: nothing to install; uses Moonraker on port 7125.
-   * Both Zmod methods work when the reader's address is in Moonraker's
-     `[authorization] trusted_clients`, which Zmod sets to every address by
-     default. If you narrowed it, enter a Moonraker API key.
-   * **Flashforge stock firmware** (AD5X or Creator 5 without Zmod): enter
-     the printer's serial number and its check code, the code the printer
-     shows for LAN connections (the one OrcaSlicer and FlashPrint ask for
-     when you add the printer).
-   * **Snapmaker U1**: pick **Extended firmware** when the printer runs
-     paxx12's Extended firmware, or **Stock firmware** on Snapmaker's own
-     (both Moonraker, port 7125; nothing to install). Pick the head this
-     reader is for. For Spoolman matching, use the Extended firmware and
-     turn on Spoolman in its settings.
+   * **Klipper**: pick **Happy Hare MMU**, **AFC** or **Moonraker lane
+     data** (Moonraker, port 7125; nothing to install), and which four
+     gates, lanes or tools this reader covers. The reader asks the printer
+     how many exist (extruders, Happy Hare gates, AFC lanes) and offers
+     only those. Enter a Moonraker API key if the reader is not in
+     Moonraker's `trusted_clients`.
    * **Bambu Lab**: the method is always **LAN mode (MQTT)**. Turn on LAN
      mode on the printer, and on current firmware **Developer Mode** too
      (Settings > Network / LAN Only on the printer's screen); without it the
      printer ignores the reader and the reader says so. Enter the serial
      number and the **access code** shown there, and pick the AMS this
      reader is for (A-D) or the external spool.
-   * **Anycubic Kobra**: turn on **LAN mode** on the printer's screen
-     (it drops the Anycubic cloud while on). The method is always **LAN
-     mode (ACE)**; just the IP address. Pick the ACE this reader is for.
-     Kobra 2 and Kobra X use an older handshake and are not supported.
-   * **Qidi Plus4 / Q2 / Max4**: the method is always **Stock firmware
-     (Box)** (Moonraker, port 7125; nothing to install). Pick the Box this
-     reader is for. Enter a Moonraker API key if the reader is not in
-     Moonraker's `trusted_clients`.
    * **Creality K1 / K2 / Hi**: the method is always **Stock firmware
      (CFS)**; just the IP address (the printer's WebSocket, port 9999).
      Pick the CFS this reader is for (1-4) or the external spool. A
      rooted Creality running Moonraker can use **Klipper** instead.
-   * **Spoolman (no printer)**: the IP address of the Spoolman server (port
-     7912 unless yours differs). **Tags Spoolman does not know**: by
-     default, a tag with filament data that matches no spool is added as a
-     new spool. **Location for scanned
-     spools** (optional) moves every scanned spool there, e.g. "Dry box".
-     Spoolman has no login; the API key field is only for a proxy in front
-     of it that wants `X-Api-Key`. Add it beside your printers and pick it
-     as the active target when the reader sits at the shelf.
+   * **Qidi Plus4 / Q2 / Max4**: the method is always **Stock firmware
+     (Box)** (Moonraker, port 7125; nothing to install). Pick the Box this
+     reader is for. Enter a Moonraker API key if the reader is not in
+     Moonraker's `trusted_clients`.
+   * **Anycubic Kobra**: turn on **LAN mode** on the printer's screen
+     (it drops the Anycubic cloud while on). The method is always **LAN
+     mode (ACE)**; just the IP address. Pick the ACE this reader is for.
+     Kobra 2 and Kobra X use an older handshake and are not supported.
+   * **Snapmaker U1**: pick **Extended firmware** when the printer runs
+     paxx12's Extended firmware, or **Stock firmware** on Snapmaker's own
+     (both Moonraker, port 7125; nothing to install). Pick the head this
+     reader is for. For Spoolman matching, use the Extended firmware and
+     turn on Spoolman in its settings.
+   * **Flashforge stock firmware** (AD5X or Creator 5 without Zmod): enter
+     the printer's serial number and its check code, the code the printer
+     shows for LAN connections (the one OrcaSlicer and FlashPrint ask for
+     when you add the printer).
+   * **Flashforge AD5X / Creator 5, FF_NFC plugin**: install or update
+     FF_NFC on the printer (Zmod or
+     Kiln OS). The reader reaches it through Moonraker (port 7125); FF_NFC
+     adds endpoints to Moonraker's API rather than opening a port of its
+     own.
+   * **Flashforge AD5X / Creator 5, Zmod basic**: nothing to install; uses
+     Moonraker on port 7125.
+   * Both Zmod methods work when the reader's address is in Moonraker's
+     `[authorization] trusted_clients`, which Zmod sets to every address by
+     default. If you narrowed it, enter a Moonraker API key.
    * **Flashforge AD5M (Zmod / Forge-X)**: needs Zmod or
      [Forge-X](https://github.com/DrA1ex/ff5m) (Moonraker, port 7125).
      The method is always **Moonraker lane data** for its one tool, T0:
@@ -485,12 +489,14 @@ name. `python tools/release.py [board ...]` writes the same files into
      filament on the AD5M, unlike the AD5X and Creator 5. If Moonraker
      refuses the reader, add its address to `trusted_clients` or enter an
      API key.
-   * **Klipper**: pick **Happy Hare MMU**, **AFC** or **Moonraker lane
-     data** (Moonraker, port 7125; nothing to install), and which four
-     gates, lanes or tools this reader covers. The reader asks the printer
-     how many exist (extruders, Happy Hare gates, AFC lanes) and offers
-     only those. Enter a Moonraker API key if the reader is not in
-     Moonraker's `trusted_clients`.
+   * **Spoolman (no printer)**: the IP address of the Spoolman server (port
+     7912 unless yours differs). **Tags Spoolman does not know**: by
+     default, a tag with filament data that matches no spool is added as a
+     new spool. **Location for scanned
+     spools** (optional) moves every scanned spool there, e.g. "Dry box".
+     Spoolman has no login; the API key field is only for a proxy in front
+     of it that wants `X-Api-Key`. Add it beside your printers and pick it
+     as the active target when the reader sits at the shelf.
 5. On the **Scan** tab, choose which printer scans go to, and hold a tag to
    the reader.
 
