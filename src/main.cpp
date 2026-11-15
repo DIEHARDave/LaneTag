@@ -241,6 +241,9 @@ void App::record(const PrinterReply &reply) {
     if (reply.title.length()) last.printerTitle = reply.title;
     if (reply.spoolId) last.printerSpool = reply.spoolId;
     feedback.play(reply.ok ? Signal::Success : Signal::Failure);
+    // After the green flash, the spool's own color (WS2812) until the next
+    // scan or for 10 s. Not while the printer still waits for a slot.
+    if (reply.ok && !last.waiting && last.filament.color >= 0) feedback.holdColor(last.filament.color);
 }
 
 void App::handleTag(const Tag &tag) {

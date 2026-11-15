@@ -54,6 +54,8 @@ void TagReader::begin(const ReaderPins &pins) {
     } else {
         if (pins.bus == Pn532Bus::I2C)
             pn532_.attachI2C(Wire, pins.sda, pins.scl);
+        else if (pins.bus == Pn532Bus::SPI)
+            pn532_.attachSpi(SPI, pins.sck, pins.miso, pins.mosi, pins.ss, pins.rst);
         else
             pn532_.attachUart(Serial1, pins.rx, pins.tx);
         chip_ = &pn532_;
@@ -95,6 +97,9 @@ bool TagReader::poll(Tag &tag) {
                 error += "; check the wiring and that it has 5 V and 3.3 V";
             } else {
                 if (pins_.bus == Pn532Bus::I2C) error += " (" + scanI2C() + ")";
+                if (pins_.bus == Pn532Bus::SPI)
+                    error += " (SCK " + String(pins_.sck) + ", MISO " + String(pins_.miso) + ", MOSI " +
+                             String(pins_.mosi) + ", SS " + String(pins_.ss) + ")";
                 error += "; check the wiring and the mode switches";
             }
             if (error != error_) log_w("%s", error.c_str());

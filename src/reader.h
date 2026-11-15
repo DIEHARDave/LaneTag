@@ -17,7 +17,7 @@ struct ReaderPins {
     int sda = -1, scl = -1;     // I2C
     int rx = -1, tx = -1;       // UART (ESP32 side)
     int sck = -1, miso = -1, mosi = -1, ss = -1;    // SPI
-    int rst = -1;               // RC522 / PN5180 RST, -1: not wired
+    int rst = -1;               // RC522 / PN5180 RST, PN532 RSTPDN (SPI), -1: not wired
     int busy = -1;              // PN5180 BUSY
 };
 

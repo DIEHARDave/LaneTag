@@ -150,7 +150,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
     <h2>NFC reader</h2>
     <div class="grid">
       <div><label for="chip">Reader</label><select id="chip"><option value="pn532">PN532</option><option value="rc522">RC522 (SPI)</option><option value="pn5180">PN5180 (SPI)</option></select></div>
-      <div class="pn532"><label for="bus">Connection</label><select id="bus"><option value="i2c">I2C</option><option value="uart">HSU (UART)</option></select></div>
+      <div class="pn532"><label for="bus">Connection</label><select id="bus"><option value="i2c">I2C</option><option value="spi">SPI</option><option value="uart">HSU (UART)</option></select></div>
       <div class="pn532 i2c"><label for="sda">SDA pin</label><input id="sda" type="number"></div>
       <div class="pn532 i2c"><label for="scl">SCL pin</label><input id="scl" type="number"></div>
       <div class="pn532 uart"><label for="rx">RX pin (to PN532 TX)</label><input id="rx" type="number"></div>
@@ -703,13 +703,14 @@ $("savePrinters").onclick = async () => {
 
 // --- Settings ----------------------------------------------------------------
 function showBus() {
-  const chip = $("chip").value, spi = chip !== "pn532", uart = $("bus").value === "uart";
-  document.querySelectorAll(".pn532").forEach(e => e.classList.toggle("hidden", spi));
+  const chip = $("chip").value, pn532 = chip === "pn532", bus = $("bus").value;
+  const spi = !pn532 || bus === "spi";
+  document.querySelectorAll(".pn532").forEach(e => e.classList.toggle("hidden", !pn532));
   document.querySelectorAll(".spi").forEach(e => e.classList.toggle("hidden", !spi));
   document.querySelectorAll(".pn5180").forEach(e => e.classList.toggle("hidden", chip !== "pn5180"));
-  document.querySelectorAll(".pn532.uart").forEach(e => e.classList.toggle("hidden", spi || !uart));
-  document.querySelectorAll(".pn532.i2c").forEach(e => e.classList.toggle("hidden", spi || uart));
-  $("ssLabel").textContent = chip === "pn5180" ? "NSS pin" : "SDA (SS) pin";
+  document.querySelectorAll(".pn532.uart").forEach(e => e.classList.toggle("hidden", !pn532 || bus !== "uart"));
+  document.querySelectorAll(".pn532.i2c").forEach(e => e.classList.toggle("hidden", !pn532 || bus !== "i2c"));
+  $("ssLabel").textContent = chip === "pn5180" ? "NSS pin" : pn532 ? "SS (NSS) pin" : "SDA (SS) pin";
 }
 $("chip").onchange = showBus;
 

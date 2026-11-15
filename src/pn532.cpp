@@ -8,6 +8,20 @@ constexpr uint8_t I2C_ADDRESS = 0x24;
 constexpr size_t I2C_MAX_READ = 128;     // the Arduino Wire buffer
 constexpr uint8_t I2C_BUS = 0;           // the bus behind Wire
 
+// SPI: mode 0, LSB first, up to 5 MHz. Each transfer starts with one of
+// these bytes. The bytes are bit-reversed by hand and sent MSB first, which
+// every ESP32's SPI driver does the same way.
+constexpr uint32_t SPI_CLOCK = 1000000;
+constexpr uint8_t SPI_STATUS_READ = 0x02;
+constexpr uint8_t SPI_DATA_WRITE = 0x01;
+constexpr uint8_t SPI_DATA_READ = 0x03;
+
+uint8_t reverse(uint8_t b) {
+    b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
+    b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
+    return (b & 0xAA) >> 1 | (b & 0x55) << 1;
+}
+
 constexpr uint8_t CMD_GET_FIRMWARE_VERSION = 0x02;
 constexpr uint8_t CMD_SAM_CONFIGURATION = 0x14;
 constexpr uint8_t CMD_RF_CONFIGURATION = 0x32;
@@ -65,9 +79,40 @@ void Pn532::attachUart(HardwareSerial &serial, int rx, int tx, uint32_t baud) {
     serial_->begin(baud, SERIAL_8N1, rx, tx);
 }
 
+void Pn532::attachSpi(SPIClass &spi, int sck, int miso, int mosi, int ss, int rst) {
+    bus_ = Pn532Bus::SPI;
+    spi_ = &spi;
+    ss_ = ss;
+    pinMode(ss_, OUTPUT);
+    digitalWrite(ss_, HIGH);
+    spi_->begin(sck, miso, mosi, -1);
+    if (rst >= 0) {
+        // RSTPDN low resets the chip; it needs about 2 ms after release.
+        pinMode(rst, OUTPUT);
+        digitalWrite(rst, LOW);
+        delay(10);
+        digitalWrite(rst, HIGH);
+        delay(10);
+    }
+}
+
+// The PN532 wakes from power-down when NSS falls and needs about 1 ms
+// before the first clock.
+void Pn532::spiSelect() {
+    spi_->beginTransaction(SPISettings(SPI_CLOCK, MSBFIRST, SPI_MODE0));
+    digitalWrite(ss_, LOW);
+    delay(1);
+}
+
+void Pn532::spiDeselect() {
+    digitalWrite(ss_, HIGH);
+    spi_->endTransaction();
+}
+
 void Pn532::end() {
     ok_ = false;
     if (bus_ == Pn532Bus::UART && serial_) serial_->end();
+    if (bus_ == Pn532Bus::SPI && spi_) spi_->end();
 }
 
 void Pn532::powerDown() {
@@ -125,6 +170,13 @@ bool Pn532::writeFrame(const uint8_t *data, size_t len, bool wake) {
         if (wake) serial_->write(WAKEUP, sizeof(WAKEUP));
         return serial_->write(frame, pos) == pos;
     }
+    if (bus_ == Pn532Bus::SPI) {
+        spiSelect();
+        spi_->transfer(reverse(SPI_DATA_WRITE));
+        for (size_t i = 0; i < pos; i++) spi_->transfer(reverse(frame[i]));
+        spiDeselect();
+        return true;
+    }
     wire_->beginTransmission(I2C_ADDRESS);
     wire_->write(frame, pos);
     return wire_->endTransmission() == 0;
@@ -143,6 +195,28 @@ bool Pn532::i2cFill(size_t len, uint32_t deadline) {
             i2cRead(I2C_BUS, I2C_ADDRESS, buf, len, 50, &got) == ESP_OK && got >= 2 && (buf[0] & 0x01)) {
             rxLen_ = min(got - 1, sizeof(rx_));
             memcpy(rx_, buf + 1, rxLen_);
+            return true;
+        }
+        delay(1);
+    }
+    return false;
+}
+
+// SPI: poll the status byte until the PN532 is ready, then read a frame in
+// one transfer (unlike I2C without a leading status byte).
+bool Pn532::spiFill(size_t len, uint32_t deadline) {
+    len = min(len, sizeof(rx_));
+    while ((int32_t)(millis() - deadline) < 0) {
+        spiSelect();
+        spi_->transfer(reverse(SPI_STATUS_READ));
+        bool ready = reverse(spi_->transfer(0)) & 0x01;
+        spiDeselect();
+        if (ready) {
+            spiSelect();
+            spi_->transfer(reverse(SPI_DATA_READ));
+            for (size_t i = 0; i < len; i++) rx_[i] = reverse(spi_->transfer(0));
+            spiDeselect();
+            rxLen_ = len;
             return true;
         }
         delay(1);
@@ -185,9 +259,10 @@ int Pn532::parse(uint8_t *body, size_t max) {
 
 int Pn532::readFrame(uint8_t *body, size_t max, uint32_t timeoutMs, size_t i2cLen) {
     uint32_t deadline = millis() + timeoutMs;
-    if (bus_ == Pn532Bus::I2C) {
-        // Every I2C transfer holds at most one frame; leftovers are padding.
-        if (!i2cFill(i2cLen, deadline)) return -1;
+    if (bus_ != Pn532Bus::UART) {
+        // Every I2C or SPI transfer holds at most one frame; leftovers are
+        // padding.
+        if (!(bus_ == Pn532Bus::I2C ? i2cFill(i2cLen, deadline) : spiFill(i2cLen, deadline))) return -1;
         int result = parse(body, max);
         rxLen_ = 0;
         return result;

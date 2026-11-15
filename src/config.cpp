@@ -286,7 +286,9 @@ void configToJson(const Config &config, JsonObject out, bool secrets) {
     reader["chip"] = config.reader.chip == ReaderChip::RC522    ? "rc522"
                      : config.reader.chip == ReaderChip::PN5180 ? "pn5180"
                                                                 : "pn532";
-    reader["bus"] = config.reader.bus == Pn532Bus::UART ? "uart" : "i2c";
+    reader["bus"] = config.reader.bus == Pn532Bus::UART  ? "uart"
+                    : config.reader.bus == Pn532Bus::SPI ? "spi"
+                                                         : "i2c";
     reader["sda"] = config.reader.sda;
     reader["scl"] = config.reader.scl;
     reader["rx"] = config.reader.rx;
@@ -363,7 +365,7 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
                            : chip == "pn5180" ? ReaderChip::PN5180
                                               : ReaderChip::PN532;
         String bus = reader["bus"] | "i2c";
-        next.reader.bus = bus == "uart" ? Pn532Bus::UART : Pn532Bus::I2C;
+        next.reader.bus = bus == "uart" ? Pn532Bus::UART : bus == "spi" ? Pn532Bus::SPI : Pn532Bus::I2C;
         next.reader.sda = pin(reader["sda"], next.reader.sda);
         next.reader.scl = pin(reader["scl"], next.reader.scl);
         next.reader.rx = pin(reader["rx"], next.reader.rx);
@@ -374,10 +376,11 @@ String configFromJson(Config &config, JsonObjectConst in, bool &restart) {
         next.reader.ss = pin(reader["ss"], next.reader.ss);
         next.reader.rst = pin(reader["rst"], next.reader.rst);
         next.reader.busy = pin(reader["busy"], next.reader.busy);
-        bool spi = next.reader.chip != ReaderChip::PN532;
+        bool spi = next.reader.chip != ReaderChip::PN532 || next.reader.bus == Pn532Bus::SPI;
         if (spi && (next.reader.sck < 0 || next.reader.miso < 0 || next.reader.mosi < 0 || next.reader.ss < 0))
-            return next.reader.chip == ReaderChip::RC522 ? "the RC522 needs its SCK, MISO, MOSI and SDA (SS) pins"
-                                                         : "the PN5180 needs its SCK, MISO, MOSI and NSS pins";
+            return next.reader.chip == ReaderChip::RC522    ? "the RC522 needs its SCK, MISO, MOSI and SDA (SS) pins"
+                   : next.reader.chip == ReaderChip::PN5180 ? "the PN5180 needs its SCK, MISO, MOSI and NSS pins"
+                                                            : "a PN532 on SPI needs its SCK, MISO, MOSI and SS pins";
         if (next.reader.chip == ReaderChip::PN5180 && next.reader.busy < 0) return "the PN5180 needs its BUSY pin";
 #if defined(BOARD_LCD147) || defined(BOARD_LCD19) || defined(BOARD_LCD114) || defined(BOARD_LCD169)
         if (spi) return "the screen has this board's SPI bus; use a PN532 (HSU or I2C)";

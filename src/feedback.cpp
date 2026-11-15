@@ -16,6 +16,17 @@ constexpr uint32_t PURPLE = 0xFF00FF;     // setup access point
 
 // A WS2812 at full power is blinding (and draws 60 mA).
 constexpr uint8_t WS2812_SCALE = 48;
+
+// A held spool color with its brightest channel below this is "black"
+// (shown as a slow white pulse); one with less saturation than this
+// (out of 255) is a grey or white (shown as steady white, dimmer for darker).
+constexpr uint8_t BLACK_MAX = 0x30;
+constexpr uint8_t GREY_SATURATION = 64;
+constexpr uint8_t GREY_MIN_LEVEL = 40;     // the dimmest grey that still reads as lit
+constexpr uint32_t PULSE_PERIOD = 2000;    // ms, black's breathing
+constexpr uint8_t PULSE_LOW = 10, PULSE_HIGH = 120;
+
+uint32_t white(uint8_t level) { return (uint32_t)level << 16 | (uint32_t)level << 8 | level; }
 }  // namespace
 
 const char *ledTypeName(LedType type) {
@@ -73,6 +84,8 @@ void Feedback::output(bool on) {
 }
 
 void Feedback::play(Signal signal) {
+    holdUntil_ = 0;
+    holdMs_ = 0;
     switch (signal) {
     case Signal::Read: start(READ, BLUE); break;
     case Signal::Success: start(SUCCESS, GREEN); break;
@@ -82,6 +95,8 @@ void Feedback::play(Signal signal) {
 }
 
 void Feedback::count(int n) {
+    holdUntil_ = 0;
+    holdMs_ = 0;
     if (n <= 0) {
         start(NO_SLOT, BLUE);
         return;
@@ -93,6 +108,29 @@ void Feedback::count(int n) {
     }
     counted_[2 * n - 1] = 0;
     start(counted_, BLUE);
+}
+
+void Feedback::holdColor(uint32_t color, uint32_t ms) {
+    if (led_.type != LedType::Ws2812 || led_.pin < 0 || !ms) return;
+    hold_ = color & 0xFFFFFF;
+    holdMs_ = ms;
+    // Without a pattern playing, the hold starts now.
+    if (!pattern_) holdUntil_ = millis() + ms;
+}
+
+uint32_t Feedback::heldLed(uint32_t now) const {
+    uint8_t r = hold_ >> 16, g = hold_ >> 8, b = hold_;
+    uint8_t hi = max(r, max(g, b)), lo = min(r, min(g, b));
+    if (hi < BLACK_MAX) {
+        // Black: white breathing slowly between dim and bright.
+        uint32_t phase = now % PULSE_PERIOD, half = PULSE_PERIOD / 2;
+        uint32_t ramp = phase < half ? phase : PULSE_PERIOD - phase;
+        return white(PULSE_LOW + (PULSE_HIGH - PULSE_LOW) * ramp / half);
+    }
+    if ((uint32_t)(hi - lo) * 255 / hi < GREY_SATURATION)
+        return white(max<uint8_t>(hi, GREY_MIN_LEVEL));    // grey to white
+    // A color: full brightness, same hue, so dark shades still show.
+    return (uint32_t)(r * 255 / hi) << 16 | (uint32_t)(g * 255 / hi) << 8 | (b * 255 / hi);
 }
 
 void Feedback::start(const uint16_t *pattern, uint32_t color) {
@@ -112,10 +150,20 @@ void Feedback::loop() {
         if (!pattern_[step_]) {
             pattern_ = nullptr;
             output(false);
+            if (holdMs_) holdUntil_ = now + holdMs_;
+            holdMs_ = 0;
             return;
         }
         output(step_ % 2 == 0);       // even steps on, odd steps off
         return;
+    }
+    if (holdUntil_) {
+        if ((int32_t)(now - holdUntil_) < 0) {
+            setLed(heldLed(now));
+            return;
+        }
+        holdUntil_ = 0;
+        setLed(0);
     }
     if (idleBlink_) {
         bool on = (now / 1000) % 2 == 0 && now % 1000 < 100;

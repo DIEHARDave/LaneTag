@@ -52,7 +52,8 @@ printers and their IP addresses, and how each printer is reached.
 > Classic, keys derived from the UID) are tested and read correctly. Not
 > yet tried: Creality tags, a factory-fresh printer, and
 > the **Zmod basic** method. The PN532 works over I2C and HSU (ESP32-C3 and
-> classic ESP32), and the RC522 read tags on an ESP32-C3. On a **CYD**
+> classic ESP32; its SPI mode builds but has not been run on hardware yet),
+> and the RC522 read tags on an ESP32-C3. On a **CYD**
 > (ESP32-2432S028, ST7789 version) with a PN532 over HSU, scans reach an
 > AD5X with FF_NFC, and its printer, fixed-slot and "put the waiting scan
 > here" touch buttons all work. **PN5180
@@ -104,7 +105,7 @@ work too.
   for what has run on real hardware.
 * A reader module, one of:
   * a **PN532**, e.g. the common red or blue "PN532 NFC RFID V3" boards or
-    Elechouse's (good range, the tested one);
+    Elechouse's (good range, the tested one), on I2C, SPI or HSU (UART);
   * an **RC522** (MFRC522), the cheap blue "RFID-RC522" board, on SPI;
   * a **PN5180** board, on SPI. The only one of the three that also reads
     **ISO 15693** tags (ICODE SLIX/SLIX2), which **OpenPrintTag** uses.
@@ -152,8 +153,9 @@ work too.
 | ideaspark ESP32 1.14" LCD | `ideaspark-lcd114` | 1.14" 135x240 | PN532 (HSU) |
 | ESP32-C6 DevKit / SuperMini | `esp32-c6` | none | PN532 (HSU) |
 
-The ESP32-S3 build and the SH1106 OLED and PN5180 drivers have not been
-run on hardware yet. Reports of other boards are welcome.
+The ESP32-S3 build, the SH1106 OLED, the PN5180 driver and the PN532 in
+SPI mode have not been run on hardware yet. Reports of other boards are
+welcome.
 
 ### Wiring
 
@@ -168,6 +170,7 @@ levels. Set the PN532's mode switches for the bus you use:
 | Mode | Switch 1 (SEL0) | Switch 2 (SEL1) |
 |------|-----------------|-----------------|
 | I2C (default) | ON | OFF |
+| SPI | OFF | ON |
 | HSU (UART) | OFF | OFF |
 
 Default pins (all can be changed on the web page):
@@ -197,7 +200,32 @@ two PN532 V3 boards that work on I2C on an ESP32-C3 held SCL low and were
 never found on I2C, and both worked in HSU. The reader's status names an
 I2C line that stays low.
 
-The PN532's SPI mode (switch 1 OFF, switch 2 ON) is not supported.
+**SPI** (switch 1 OFF, switch 2 ON; choose **SPI** under **Settings > NFC
+reader > Connection**) uses the same default pins as the RC522 below. The
+PN532 V3 board's SPI header is labeled SCK, MISO, MOSI and **SS** (or NSS),
+the chip select. IRQ stays unconnected; RSTPDN can go to a GPIO set as the
+RST pin, or stay unconnected (-1). The boards with a built-in color screen
+(Waveshare, ideaspark) give their SPI bus to the screen, so there the PN532
+goes on HSU or I2C. SPI mode is new and not yet tried on hardware; reports
+are welcome.
+
+| Board | SCK | MISO | MOSI | SS |
+|-------|-----|------|------|----|
+| ESP32 | 18 | 19 | 23 | 5 |
+| ESP32-S3 | 12 | 13 | 11 | 10 |
+| ESP32-C3 | 4 | 5 | 6 | 7 |
+| ESP32-C6 | 21 | 20 | 19 | 18 |
+| ESP32-C5 | 6 | 8 | 10 | 9 |
+
+```
+PN532          ESP32 (SPI)
+ VCC  ──────── 3V3
+ GND  ──────── GND
+ SCK  ──────── GPIO 18
+ MISO ──────── GPIO 19
+ MOSI ──────── GPIO 23
+ SS   ──────── GPIO 5
+```
 
 #### RC522
 
@@ -564,6 +592,12 @@ GPIO 48 or 38 on the S3, GPIO 8 on the C6). In color:
 | A slot has to be picked | two short yellow |
 | Slot button (slot number) | blue blinks |
 | Setup access point up (no Wi-Fi) | slow purple blink |
+| After the green, on a WS2812 | the spool's own color, for 10 s or until the next scan |
+
+The spool color is shown at full brightness, so dark shades show their hue
+(a dark navy shows blue). Greys and white show as white light, dimmer for
+darker greys, and black as a slow white pulse. It needs a tag that carries
+a color, and is skipped while the printer still waits for a slot.
 
 The CYD uses its RGB LED (red 4, green 16, blue 17) in color by default;
 one set up before this setting keeps its blue LED until changed to RGB.
@@ -649,7 +683,7 @@ The screen turns off after 10 minutes without a change (OLEDs burn in) and
 comes back on the next scan or button press; **Screen off after** changes
 this. The display may share the PN532's I2C pins. With the PN532 on I2C, a
 display on other pins needs a second I2C bus, which the ESP32-C3 does not
-have; with the PN532 on HSU (or an RC522/PN5180) the display can go on any
+have; with the PN532 on HSU or SPI (or an RC522/PN5180) the display can go on any
 two free pins. Boards with a built-in 0.96" OLED (Ideaspark ESP32 and
 similar) have it on SDA 21 / SCL 22 at 0x3C.
 
