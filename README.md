@@ -37,7 +37,7 @@ printers and their IP addresses, and how each printer is reached.
 > **Status: early release.** Tested on an **ESP32-C3 SuperMini** with a
 > **PN532 over I2C & HSU**: OpenSpool (NTAG) and Snapmaker (MIFARE Classic, keys
 > derived from the UID) tags, assigned on a **Creator 5** and an **AD5X**
-> running Zmod and FF_NFC (then zmod_nfc), from the printer's prompt and with
+> running Zmod and FF_NFC, from the printer's prompt and with
 > the reader fixed to one slot, and to an **AD5X's stock screen** through the stock
 > API, and to an unmodified
 > **Creator 5 Pro on stock firmware**. The firmware
@@ -63,7 +63,7 @@ Each printer on the reader's list uses one of these methods:
 
 | Printer & Method | Printer runs | What a scan does |
 |------------------|--------------|------------------|
-| **Flashforge AD5X / Creator 5**<br><br>FF_NFC plugin | Zmod (AD5X, Creator 5) or Kiln OS (AD5X) with the [FF_NFC](https://github.com/DIEHARDave/FF_NFC) plugin (zmod_nfc before) | The **whole tag read** goes through Moonraker to the plugin (no extra port or service on the printer), which handles it exactly like a tag on a USB reader plugged into the printer: it decodes every format FF_NFC knows, looks the spool up in **Spoolman** (spool ID on the tag, or the tag's UID), shows its **slot popup on the printer's screen** (or takes the slot you insert filament into), sets the slot (on Zmod through zmod_afclite's `SET_SPOOL_ID` or Zmod's `CHANGE_ZCOLOR`, on Kiln OS with `IFS_SET_MATERIAL`), and fills in Moonraker's **lane_data** for OrcaSlicer. The reader's web page can pick the slot too. |
+| **Flashforge AD5X / Creator 5**<br><br>FF_NFC plugin | Zmod (AD5X, Creator 5) or Kiln OS (AD5X) with the [FF_NFC](https://github.com/DIEHARDave/FF_NFC) plugin | The **whole tag read** goes through Moonraker to the plugin (no extra port or service on the printer), which handles it exactly like a tag on a USB reader plugged into the printer: it decodes every format FF_NFC knows, looks the spool up in **Spoolman** (spool ID on the tag, or the tag's UID), shows its **slot popup on the printer's screen** (or takes the slot you insert filament into), sets the slot (on Zmod through zmod_afclite's `SET_SPOOL_ID` or Zmod's `CHANGE_ZCOLOR`, on Kiln OS with `IFS_SET_MATERIAL`), and fills in Moonraker's **lane_data** for OrcaSlicer. The reader's web page can pick the slot too. |
 | **Flashforge AD5X / Creator 5**<br><br>Zmod basic | Zmod, no plugin | Material and color go to the slot through Moonraker (`CHANGE_ZCOLOR`), snapped to Zmod's material list and color palette, and the slot's **lane_data** entry gets the material, color, vendor, temperatures and the tag's Spoolman spool ID if it carries one. No Spoolman lookup. |
 | **Flashforge AD5X / Creator 5**<br><br>Stock firmware | Flashforge firmware | Material and color through the printer's local API (`msConfig_cmd` on port 8898) - that is all the stock API offers. Needs the printer's **serial number** and **check code**. The stock screens can only draw their own 24 colors (a different set on each model), so the color is snapped to the closest one (CIEDE2000), and on the Creator 5 the material to its list. |
 | **Snapmaker U1**<br><br>Extended firmware | paxx12's [Extended firmware](https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware) | The scan reaches the head **as if the head's own RFID reader had read it**: the reader decodes the tag and posts it to Klipper's `filament_detect/set` endpoint through Moonraker, as the firmware's OpenRFID does (vendor "Generic" unless it is Snapmaker filament, so the slicer finds a profile). The screen, the slicer and the firmware's **SpoolLink** see it like any other read: with Spoolman set up in the firmware, SpoolLink looks the tag's UID up in Spoolman and loads that spool. A tag naming a Spoolman spool ID is bound to it with `SET_SPOOL_ID`; a tag with no filament data works when its UID is already bound to a spool. Nothing to install. Heads are not changed while the printer prints. Each reader is **always fixed to one head** (no "Ask"). |
@@ -418,7 +418,7 @@ name. `python tools/release.py [board ...]` writes the same files into
    hand: name, IP address, the printer model, and the method. **Test**
    checks the connection.
 
-   ![The Printers tab with two AD5Xs on Zmod + zmod_nfc (one fixed to slot 4, one asking on the printer's screen), a Snapmaker U1 on Extended firmware, a FLSun T1 on Moonraker lane data and a Spoolman server](docs/webui-printers.png)
+   ![The Printers tab with two AD5Xs on Zmod + FF_NFC (one fixed to slot 4, one asking on the printer's screen), a Snapmaker U1 on Extended firmware, a FLSun T1 on Moonraker lane data and a Spoolman server](docs/webui-printers.png)
 
    * **Find printers** searches the reader's network (its /24) for about
      45 seconds. Printers appear as they are found, each with an **Add**
@@ -436,8 +436,7 @@ name. `python tools/release.py [board ...]` writes the same files into
    * **FF_NFC plugin**: install or update FF_NFC on the printer (Zmod or
      Kiln OS). The reader reaches it through Moonraker (port 7125); FF_NFC
      adds endpoints to Moonraker's API rather than opening a port of its
-     own. Printers still on zmod_nfc, FF_NFC's name before, keep working
-     with this method until they are moved over.
+     own.
    * **Zmod basic**: nothing to install; uses Moonraker on port 7125.
    * Both Zmod methods work when the reader's address is in Moonraker's
      `[authorization] trusted_clients`, which Zmod sets to every address by
@@ -463,8 +462,8 @@ name. `python tools/release.py [board ...]` writes the same files into
      Kobra 2 and Kobra X use an older handshake and are not supported.
    * **Qidi Plus4 / Q2 / Max4**: the method is always **Stock firmware
      (Box)** (Moonraker, port 7125; nothing to install). Pick the Box this
-     reader is for. As with Zmod, enter a Moonraker API key if the reader
-     is not in Moonraker's `trusted_clients`.
+     reader is for. Enter a Moonraker API key if the reader is not in
+     Moonraker's `trusted_clients`.
    * **Creality K1 / K2 / Hi**: the method is always **Stock firmware
      (CFS)**; just the IP address (the printer's WebSocket, port 9999).
      Pick the CFS this reader is for (1-4) or the external spool. A
@@ -490,10 +489,8 @@ name. `python tools/release.py [board ...]` writes the same files into
      data** (Moonraker, port 7125; nothing to install), and which four
      gates, lanes or tools this reader covers. The reader asks the printer
      how many exist (extruders, Happy Hare gates, AFC lanes) and offers
-     only those; with just one, such as a single-extruder printer's T0,
-     every scan goes there and there is no "Ask". As with Zmod, enter a
-     Moonraker API key if the reader is not in Moonraker's
-     `trusted_clients`.
+     only those. Enter a Moonraker API key if the reader is not in
+     Moonraker's `trusted_clients`.
 5. On the **Scan** tab, choose which printer scans go to, and hold a tag to
    the reader.
 
