@@ -28,10 +28,6 @@ spools; tested on an ESP32-C3 with Spoolman 0.27.0). Moonraker lane
 data is tested on real Klipper printers; the Anycubic, Bambu, Creality,
 Happy Hare, AFC and Qidi methods are not yet tested on real printers.
 
-> Formerly **zmod_esp32-nfc**. Boards running that firmware keep their
-> settings when updated to LaneTag (see [Updating from
-> zmod_esp32-nfc](#updating-from-zmod_esp32-nfc)).
-
 Hold a spool's tag to the reader and the printer's slot gets the spool's
 material and color. One reader can serve several printers, running stock
 firmware or [Zmod](https://github.com/ghzserg/zmod), and needs no USB port on
@@ -503,15 +499,6 @@ name. `python tools/release.py [board ...]` writes the same files into
 
 You can also set a password for the web page (user `admin`) under
 **Settings**.
-
-### Updating from zmod_esp32-nfc
-
-Upload the LaneTag firmware under **Settings > Firmware** as usual. On its
-first start it moves the saved settings (Wi-Fi, printers, pins, display)
-over, so nothing needs setting up again. The reader keeps its old
-`zmod-nfc-xxxx` hostname until you change it under **Settings**; new
-readers are called `lanetag-xxxx`, and their setup network uses the
-password `lanetag1`.
 
 ## Using it
 

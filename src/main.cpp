@@ -1,5 +1,5 @@
 // LaneTag: an ESP32 + PN532, RC522 or PN5180 network NFC/RFID filament tag
-// reader for 3D printers (formerly zmod_esp32-nfc).
+// reader for 3D printers.
 //
 // A scanned tag goes to the active printer (chosen on the web page):
 //   ff_nfc      the whole read goes to the FF_NFC plugin (Zmod or Kiln OS;
