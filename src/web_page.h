@@ -116,7 +116,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
     <div class="msg" id="printersMsg"></div>
     <div class="hint methods">
       <p>Pick a method per printer:</p>
-      <p><b>FF_NFC</b> sends the whole tag to the FF_NFC plugin (Zmod or Kiln OS), which shows its slot popup, matches Spoolman and fills lane data.</p>
+      <p><b>FF_NFC</b> sends the whole tag to the FF_NFC plugin (Zmod or Kiln OS), which shows its slot popup, matches Spoolman and fills lane data. On a FLSUN T1 (Klipper model) it goes to FLSUN_NFC, which makes the spool the active one.</p>
       <p><b>Zmod basic</b> sets the slot's color and material through Moonraker; no plugin needed.</p>
       <p><b>Stock</b> (Flashforge) uses Flashforge's local API: slot color and material only. It needs the printer's serial number and check code.</p>
       <p><b>Snapmaker U1, Extended firmware</b> (paxx12): each scan arrives as the head's own RFID read, and SpoolLink matches the tag in Spoolman. Each U1 reader is fixed to one head.</p>
@@ -223,7 +223,7 @@ input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-rad
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const METHODS = {ff_nfc: "FF_NFC plugin", zmod_basic: "Zmod basic", stock: "Stock firmware", snapmaker: "Extended firmware", snapmaker_stock: "Stock firmware", bambu: "LAN mode (MQTT)", creality_cfs: "Stock firmware (CFS)", anycubic_ace: "LAN mode (ACE)", qidi_box: "Stock firmware (Box)", happy_hare: "Happy Hare MMU", afc: "AFC (Box Turtle, ...)", lane_data: "Moonraker lane data", spoolman: "Spoolman API"};
+const METHODS = {ff_nfc: "FF_NFC / FLSUN_NFC plugin", zmod_basic: "Zmod basic", stock: "Stock firmware", snapmaker: "Extended firmware", snapmaker_stock: "Stock firmware", bambu: "LAN mode (MQTT)", creality_cfs: "Stock firmware (CFS)", anycubic_ace: "LAN mode (ACE)", qidi_box: "Stock firmware (Box)", happy_hare: "Happy Hare MMU", afc: "AFC (Box Turtle, ...)", lane_data: "Moonraker lane data", spoolman: "Spoolman API"};
 const MODELS = {ad5x: "Flashforge AD5X", creator5: "Flashforge Creator 5", snapmaker_u1: "Snapmaker U1", bambu: "Bambu Lab", ad5m: "Flashforge AD5M (Zmod / Forge-X)", creality: "Creality K1 / K2 / Hi", anycubic: "Anycubic Kobra (ACE)", qidi: "Qidi Plus4 / Q2 / Max4", klipper: "Klipper", spoolman: "Spoolman (no printer)"};
 // The printer list is shown in alphabetical order.
 const MODEL_ORDER = Object.entries(MODELS).sort((a, b) => a[1].localeCompare(b[1]));
@@ -231,7 +231,7 @@ const MODEL_ORDER = Object.entries(MODELS).sort((a, b) => a[1].localeCompare(b[1
 // ask for the slot, so its readers are always fixed to a head. Bambu
 // printers likewise have a method of their own.
 const U1 = "snapmaker_u1";
-const METHODS_FOR = {snapmaker_u1: ["snapmaker", "snapmaker_stock"], bambu: ["bambu"], klipper: ["happy_hare", "afc", "lane_data"], ad5m: ["lane_data"], creality: ["creality_cfs"], anycubic: ["anycubic_ace"], qidi: ["qidi_box"], spoolman: ["spoolman"]};
+const METHODS_FOR = {snapmaker_u1: ["snapmaker", "snapmaker_stock"], bambu: ["bambu"], klipper: ["happy_hare", "afc", "lane_data", "ff_nfc"], ad5m: ["lane_data"], creality: ["creality_cfs"], anycubic: ["anycubic_ace"], qidi: ["qidi_box"], spoolman: ["spoolman"]};
 const FLASHFORGE_METHODS = ["ff_nfc", "zmod_basic", "stock"];
 const methodsFor = model => METHODS_FOR[model] || FLASHFORGE_METHODS;
 const AMS_NAMES = {1: "AMS A", 2: "AMS B", 3: "AMS C", 4: "AMS D", 0: "External spool"};

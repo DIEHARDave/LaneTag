@@ -229,7 +229,9 @@ bool methodFits(Model model, Method method) {
     case Model::SnapmakerU1: return method == Method::Snapmaker || method == Method::SnapmakerStock;
     case Model::Bambu: return method == Method::Bambu;
     case Model::Klipper:
-        return method == Method::HappyHare || method == Method::Afc || method == Method::LaneData;
+        // FfNfc: FLSUN_NFC on the FLSUN T1.
+        return method == Method::HappyHare || method == Method::Afc || method == Method::LaneData ||
+               method == Method::FfNfc;
     case Model::Adventurer5M: return method == Method::LaneData;
     case Model::Creality: return method == Method::CrealityCfs;
     case Model::Anycubic: return method == Method::AnycubicAce;

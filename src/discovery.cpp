@@ -336,13 +336,15 @@ void identifyMoonraker(const String &host) {
         add(f);
         return;
     }
-    bool zmod = false, ffNfc = false, kiln = false, ifs = false, u1 = false, mmu = false, afc = false,
+    bool zmod = false, ffNfc = false, flsunNfc = false, kiln = false, ifs = false, u1 = false, mmu = false, afc = false,
          qidi = false;
     int extruders = 0;
     for (JsonVariantConst o : objects["result"]["objects"].as<JsonArrayConst>()) {
         String name = o.as<String>();
         // FF_NFC was zmod_nfc on Zmod before.
         if (name == "ff_nfc" || name == "zmod_nfc") ffNfc = true;
+        // FLSUN_NFC: FF_NFC for the FLSUN T1, same endpoints.
+        if (name == "flsun_nfc") flsunNfc = true;
         if (name == "zmod" || name == "zmod_color" || name == "zmod_ifs" || name == "zmod_nfc") zmod = true;
         if (name == "ifs_materials") kiln = true;
         if (name == "zmod_ifs") ifs = true;
@@ -378,6 +380,11 @@ void identifyMoonraker(const String &host) {
         f.model = Model::SnapmakerU1;
         f.method = spoolLink ? Method::Snapmaker : Method::SnapmakerStock;
         label = "U1";
+    } else if (flsunNfc) {
+        // FLSUN T1 with FLSUN_NFC: one toolhead, FF_NFC's endpoints.
+        f.model = Model::Klipper;
+        f.method = Method::FfNfc;
+        label = "FLSUN T1";
     } else if (qidi) {
         f.model = Model::Qidi;
         f.method = Method::QidiBox;

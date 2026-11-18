@@ -10,7 +10,7 @@
 
 // How a scan reaches a printer.
 enum class Method : uint8_t {
-    FfNfc = 0,      // Zmod or Kiln OS + the FF_NFC plugin (zmod_nfc before): the
+    FfNfc = 0,      // Zmod or Kiln OS + the FF_NFC plugin (zmod_nfc before), or FLSUN_NFC: the
                     // raw tag read goes through Moonraker to the plugin's endpoint,
                     // which decodes it, looks it up in Spoolman and shows its slot
                     // prompt, like a USB reader on the printer
